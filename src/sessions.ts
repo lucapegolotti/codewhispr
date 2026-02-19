@@ -163,5 +163,7 @@ export async function runAgentTurn(chatId: number, userMessage: string): Promise
     logEmitter.emit("session");
   }
 
-  return narrate(result || "The agent completed the task but produced no output.");
+  const raw = result || "The agent completed the task but produced no output.";
+  if (/\braw\b/i.test(userMessage)) return raw;
+  return narrate(raw);
 }
