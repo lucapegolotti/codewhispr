@@ -2,18 +2,18 @@ import { describe, it, expect } from "vitest";
 import { findBestPane, type TmuxPane } from "./tmux.js";
 
 const panes: TmuxPane[] = [
-  { paneId: "%1", command: "node", cwd: "/Users/luca/repositories/my-app" },
-  { paneId: "%2", command: "claude", cwd: "/Users/luca/repositories/my-app" },
-  { paneId: "%3", command: "claude", cwd: "/Users/luca/repositories/other-app" },
-  { paneId: "%4", command: "bash", cwd: "/Users/luca/repositories/my-app" },
+  { paneId: "%1", command: "node", cwd: "/Users/luca/repositories/my-app", lastUsed: 100 },
+  { paneId: "%2", command: "claude", cwd: "/Users/luca/repositories/my-app", lastUsed: 200 },
+  { paneId: "%3", command: "claude", cwd: "/Users/luca/repositories/other-app", lastUsed: 150 },
+  { paneId: "%4", command: "bash", cwd: "/Users/luca/repositories/my-app", lastUsed: 50 },
 ];
 
 // Claude Code sets process.title to its version string (e.g. "2.1.47")
 const versionPanes: TmuxPane[] = [
-  { paneId: "%1", command: "node", cwd: "/Users/luca/repositories/my-app" },
-  { paneId: "%2", command: "2.1.47", cwd: "/Users/luca/repositories/my-app" },
-  { paneId: "%3", command: "2.1.47", cwd: "/Users/luca/repositories/other-app" },
-  { paneId: "%4", command: "bash", cwd: "/Users/luca/repositories/my-app" },
+  { paneId: "%1", command: "node", cwd: "/Users/luca/repositories/my-app", lastUsed: 100 },
+  { paneId: "%2", command: "2.1.47", cwd: "/Users/luca/repositories/my-app", lastUsed: 200 },
+  { paneId: "%3", command: "2.1.47", cwd: "/Users/luca/repositories/other-app", lastUsed: 150 },
+  { paneId: "%4", command: "bash", cwd: "/Users/luca/repositories/my-app", lastUsed: 50 },
 ];
 
 describe("findBestPane", () => {
@@ -33,13 +33,13 @@ describe("findBestPane", () => {
     expect(result).toBeNull();
   });
 
-  it("returns ambiguous when multiple claude panes share the same cwd", () => {
+  it("picks most recently used when multiple claude panes share the same cwd", () => {
     const dupe: TmuxPane[] = [
-      { paneId: "%2", command: "claude", cwd: "/Users/luca/repositories/my-app" },
-      { paneId: "%5", command: "claude", cwd: "/Users/luca/repositories/my-app" },
+      { paneId: "%2", command: "claude", cwd: "/Users/luca/repositories/my-app", lastUsed: 100 },
+      { paneId: "%5", command: "claude", cwd: "/Users/luca/repositories/my-app", lastUsed: 300 },
     ];
     const result = findBestPane(dupe, "/Users/luca/repositories/my-app");
-    expect(result).toBe("ambiguous");
+    expect(result?.paneId).toBe("%5");
   });
 
   it("falls back to parent directory match", () => {

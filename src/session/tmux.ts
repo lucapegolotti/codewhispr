@@ -7,6 +7,7 @@ export type TmuxPane = {
   paneId: string;
   command: string;
   cwd: string;
+  lastUsed: number; // unix timestamp from #{pane_last_used}
 };
 
 export type TmuxResult =
@@ -18,19 +19,21 @@ function isClaudePane(p: TmuxPane): boolean {
   return p.command.includes("claude") || /^\d+\.\d+\.\d+/.test(p.command);
 }
 
-export function findBestPane(panes: TmuxPane[], targetCwd: string): TmuxPane | "ambiguous" | null {
+function mostRecent(panes: TmuxPane[]): TmuxPane {
+  return panes.reduce((a, b) => (b.lastUsed > a.lastUsed ? b : a));
+}
+
+export function findBestPane(panes: TmuxPane[], targetCwd: string): TmuxPane | null {
   const claudePanes = panes.filter(isClaudePane);
   if (claudePanes.length === 0) return null;
 
-  // Exact match — if multiple panes share the same cwd, we can't pick safely
+  // Exact match — if multiple, pick the most recently used
   const exact = claudePanes.filter((p) => p.cwd === targetCwd);
-  if (exact.length === 1) return exact[0];
-  if (exact.length > 1) return "ambiguous";
+  if (exact.length >= 1) return mostRecent(exact);
 
-  // Parent directory match (e.g. cwd is a subdir of the pane's path)
+  // Parent directory match — if multiple, pick the most recently used
   const parents = claudePanes.filter((p) => targetCwd.startsWith(p.cwd + "/"));
-  if (parents.length === 1) return parents[0];
-  if (parents.length > 1) return "ambiguous";
+  if (parents.length >= 1) return mostRecent(parents);
 
   return null;
 }
@@ -38,7 +41,7 @@ export function findBestPane(panes: TmuxPane[], targetCwd: string): TmuxPane | "
 export async function listTmuxPanes(): Promise<TmuxPane[]> {
   try {
     const { stdout } = await execAsync(
-      "tmux list-panes -a -F '#{pane_id} #{pane_current_command} #{pane_current_path}'"
+      "tmux list-panes -a -F '#{pane_id} #{pane_last_used} #{pane_current_command} #{pane_current_path}'"
     );
     return stdout
       .trim()
@@ -47,9 +50,10 @@ export async function listTmuxPanes(): Promise<TmuxPane[]> {
       .map((line) => {
         const parts = line.split(" ");
         const paneId = parts[0];
-        const command = parts[1];
-        const cwd = parts.slice(2).join(" "); // handle spaces in paths
-        return { paneId, command, cwd };
+        const lastUsed = parseInt(parts[1], 10) || 0;
+        const command = parts[2];
+        const cwd = parts.slice(3).join(" "); // handle spaces in paths
+        return { paneId, lastUsed, command, cwd };
       });
   } catch {
     return [];
@@ -67,7 +71,6 @@ export async function findClaudePane(targetCwd: string): Promise<TmuxResult> {
   if (panes.length === 0) return { found: false, reason: "no_tmux" };
 
   const best = findBestPane(panes, targetCwd);
-  if (best === "ambiguous") return { found: false, reason: "ambiguous", panes: panes.filter(isClaudePane) };
   if (best) return { found: true, paneId: best.paneId };
 
   const claudePanes = panes.filter(isClaudePane);
