@@ -43,10 +43,18 @@ async function sendSessionPicker(ctx: Context): Promise<void> {
   await ctx.reply(`Available sessions:\n\n${lines.join("\n\n")}`, { reply_markup: keyboard });
 }
 
+let activeWatcherStop: (() => void) | null = null;
+
 async function startInjectionWatcher(
   attached: { sessionId: string; cwd: string },
   onDone?: () => void
 ): Promise<void> {
+  // Stop any watcher from a previous injection — prevents duplicate notifications
+  if (activeWatcherStop) {
+    activeWatcherStop();
+    activeWatcherStop = null;
+  }
+
   const filePath = await getSessionFilePath(attached.sessionId);
   if (!filePath) {
     log({ message: `watchForResponse: could not find JSONL for session ${attached.sessionId.slice(0, 8)}` });
@@ -55,7 +63,7 @@ async function startInjectionWatcher(
   }
   const baseline = await getFileSize(filePath);
   log({ message: `watchForResponse started for ${attached.sessionId.slice(0, 8)}, baseline=${baseline}` });
-  watchForResponse(filePath, baseline, async (state) => {
+  activeWatcherStop = watchForResponse(filePath, baseline, async (state) => {
     onDone?.();
     await notifyResponse(state);
   });
