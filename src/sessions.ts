@@ -86,7 +86,7 @@ export async function listSessions(limit = 5): Promise<SessionInfo[]> {
         try {
           const entry = JSON.parse(line);
           if (entry.type === "assistant") {
-            if (entry.cwd) cwd = entry.cwd;
+            if (entry.cwd && cwd === homedir()) cwd = entry.cwd;
             const textBlocks = (entry.message?.content ?? []).filter(
               (c: { type: string }) => c.type === "text"
             );
