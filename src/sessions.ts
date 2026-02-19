@@ -2,7 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { narrate } from "./narrator.js";
 import { log, logEmitter } from "./logger.js";
 import { homedir } from "os";
-import { existsSync, readFileSync } from "fs";
+import { readFile } from "fs/promises";
 
 const sessions = new Map<number, string>();
 
@@ -13,10 +13,13 @@ When the user mentions a project by name, look for it in ${homedir()}/repositori
 If the project directory is ambiguous, ask the user to clarify.
 Keep responses concise.`;
 
-function getAttachedSessionId(): string | null {
-  if (!existsSync(ATTACHED_SESSION_PATH)) return null;
-  const id = readFileSync(ATTACHED_SESSION_PATH, "utf8").trim();
-  return id || null;
+async function getAttachedSessionId(): Promise<string | null> {
+  try {
+    const id = await readFile(ATTACHED_SESSION_PATH, "utf8");
+    return id.trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 export function getActiveSessions(): number[] {
@@ -24,7 +27,7 @@ export function getActiveSessions(): number[] {
 }
 
 export async function runAgentTurn(chatId: number, userMessage: string): Promise<string> {
-  const attachedSessionId = getAttachedSessionId();
+  const attachedSessionId = await getAttachedSessionId();
   const existingSessionId = attachedSessionId ?? sessions.get(chatId);
 
   if (attachedSessionId) {
