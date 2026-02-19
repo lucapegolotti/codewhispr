@@ -87,13 +87,17 @@ export function startMonitor(onWaiting: WaitingCallback, onResponse?: ResponseCa
   // Track last text we notified per file to avoid duplicate notifications
   const lastNotified = new Map<string, string>();
 
-  const watcher = chokidar.watch(`${PROJECTS_PATH}/**/*.jsonl`, {
+  // Watch the directory directly — chokidar glob patterns don't reliably
+  // fire change events on macOS for files in ~/.claude/projects subdirs.
+  const watcher = chokidar.watch(PROJECTS_PATH, {
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: false,
+    depth: 2,
   });
 
   watcher.on("change", (filePath: string) => {
+    if (!filePath.endsWith(".jsonl")) return;
     const existing = timers.get(filePath);
     if (existing) clearTimeout(existing);
 
