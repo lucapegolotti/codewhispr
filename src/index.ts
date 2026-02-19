@@ -1,4 +1,11 @@
 import { createBot } from "./bot.js";
+import { existsSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const envPath = resolve(__dirname, "..", ".env");
+if (existsSync(envPath)) process.loadEnvFile(envPath);
 
 const required = ["TELEGRAM_BOT_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"] as const;
 for (const key of required) {
