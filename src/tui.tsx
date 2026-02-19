@@ -22,7 +22,7 @@ function loadEnv(): Record<string, string> {
         const idx = l.indexOf("=");
         let val = l.slice(idx + 1).trim();
         if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.slice(1, -1);
+          val = val.slice(1, -1).replace(/\\"/g, '"').replace(/\\\$/g, "$").replace(/\\\\/g, "\\");
         }
         return [l.slice(0, idx).trim(), val];
       })
