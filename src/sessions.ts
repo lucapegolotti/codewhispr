@@ -69,8 +69,8 @@ export async function listSessions(limit = 5): Promise<SessionInfo[]> {
       }
 
       // Decode project name: "-Users-luca-repositories-foo" -> "foo"
-      const segments = dir.replace(/^-/, "").split("-");
-      const projectName = segments[segments.length - 1] || dir;
+      const encoded = dir.replace(/^-/, "").replace(/-/g, "/");
+      const projectName = encoded.split("/").pop() || dir;
 
       // Read jsonl: collect cwd from first assistant line, lastMessage from last text block
       let cwd = homedir();
@@ -81,22 +81,28 @@ export async function listSessions(limit = 5): Promise<SessionInfo[]> {
         crlfDelay: Infinity,
       });
 
-      for await (const line of rl) {
-        if (!line.trim()) continue;
-        try {
-          const entry = JSON.parse(line);
-          if (entry.type === "assistant") {
-            if (entry.cwd && cwd === homedir()) cwd = entry.cwd;
-            const textBlocks = (entry.message?.content ?? []).filter(
-              (c: { type: string }) => c.type === "text"
-            );
-            if (textBlocks.length > 0) {
-              lastMessage = textBlocks[0].text.slice(0, 100).replace(/\n/g, " ");
+      try {
+        for await (const line of rl) {
+          if (!line.trim()) continue;
+          try {
+            const entry = JSON.parse(line);
+            if (entry.type === "assistant") {
+              if (entry.cwd && cwd === homedir()) cwd = entry.cwd;
+              const textBlocks = (entry.message?.content ?? []).filter(
+                (c: { type: string }) => c.type === "text"
+              );
+              if (textBlocks.length > 0) {
+                lastMessage = textBlocks[textBlocks.length - 1].text.slice(0, 100).replace(/\n/g, " ");
+              }
             }
+          } catch {
+            // skip malformed lines
           }
-        } catch {
-          // skip malformed lines
         }
+      } catch {
+        // skip unreadable files
+      } finally {
+        rl.close();
       }
 
       results.push({ sessionId, cwd, projectName, lastMessage, mtime });
