@@ -3,7 +3,7 @@ import OpenAI from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
-  const file = new File([audioBuffer.buffer.slice(audioBuffer.byteOffset, audioBuffer.byteOffset + audioBuffer.byteLength) as ArrayBuffer], filename, { type: "audio/ogg" });
+  const file = new File([new Uint8Array(audioBuffer)], filename, { type: "audio/ogg" });
   const transcription = await openai.audio.transcriptions.create({
     file,
     model: "whisper-1",
