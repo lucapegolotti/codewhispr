@@ -13,10 +13,14 @@ When the user mentions a project by name, look for it in ${homedir()}/repositori
 If the project directory is ambiguous, ask the user to clarify.
 Keep responses concise.`;
 
-async function getAttachedSessionId(): Promise<string | null> {
+type AttachedSession = { sessionId: string; cwd: string };
+
+async function getAttachedSession(): Promise<AttachedSession | null> {
   try {
-    const id = await readFile(ATTACHED_SESSION_PATH, "utf8");
-    return id.trim() || null;
+    const content = await readFile(ATTACHED_SESSION_PATH, "utf8");
+    const [sessionId, cwd] = content.trim().split("\n");
+    if (!sessionId) return null;
+    return { sessionId, cwd: cwd || homedir() };
   } catch {
     return null;
   }
@@ -27,11 +31,11 @@ export function getActiveSessions(): number[] {
 }
 
 export async function runAgentTurn(chatId: number, userMessage: string): Promise<string> {
-  const attachedSessionId = await getAttachedSessionId();
-  const existingSessionId = attachedSessionId ?? sessions.get(chatId);
+  const attached = await getAttachedSession();
+  const existingSessionId = attached?.sessionId ?? sessions.get(chatId);
 
-  if (attachedSessionId) {
-    log({ chatId, message: `joining attached session ${attachedSessionId.slice(0, 8)}...` });
+  if (attached) {
+    log({ chatId, message: `joining attached session ${attached.sessionId.slice(0, 8)}... (${attached.cwd})` });
   } else if (existingSessionId) {
     log({ chatId, message: `resuming session ${existingSessionId.slice(0, 8)}...` });
   } else {
@@ -43,8 +47,8 @@ export async function runAgentTurn(chatId: number, userMessage: string): Promise
 
   for await (const message of query({
     prompt: userMessage,
-    options: attachedSessionId
-      ? { resume: attachedSessionId }
+    options: attached
+      ? { resume: attached.sessionId, cwd: attached.cwd }
       : {
           allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
           permissionMode: "acceptEdits",
@@ -54,7 +58,7 @@ export async function runAgentTurn(chatId: number, userMessage: string): Promise
             : { systemPrompt: SYSTEM_PROMPT }),
         },
   })) {
-    if (message.type === "system" && message.subtype === "init" && !existingSessionId) {
+    if (message.type === "system" && message.subtype === "init" && !attached) {
       capturedSessionId = message.session_id;
     }
     if (message.type === "result" && message.subtype === "success") {
@@ -66,7 +70,7 @@ export async function runAgentTurn(chatId: number, userMessage: string): Promise
     }
   }
 
-  if (capturedSessionId && !attachedSessionId) {
+  if (capturedSessionId && !attached) {
     sessions.set(chatId, capturedSessionId);
     log({ chatId, message: "session established" });
     logEmitter.emit("session");
