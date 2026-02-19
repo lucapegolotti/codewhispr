@@ -43,14 +43,16 @@ export async function runAgentTurn(chatId: number, userMessage: string): Promise
 
   for await (const message of query({
     prompt: userMessage,
-    options: {
-      allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-      permissionMode: "acceptEdits",
-      cwd: homedir(),
-      ...(existingSessionId
-        ? { resume: existingSessionId }
-        : { systemPrompt: SYSTEM_PROMPT }),
-    },
+    options: attachedSessionId
+      ? { resume: attachedSessionId }
+      : {
+          allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+          permissionMode: "acceptEdits",
+          cwd: homedir(),
+          ...(existingSessionId
+            ? { resume: existingSessionId }
+            : { systemPrompt: SYSTEM_PROMPT }),
+        },
   })) {
     if (message.type === "system" && message.subtype === "init" && !existingSessionId) {
       capturedSessionId = message.session_id;
@@ -59,7 +61,8 @@ export async function runAgentTurn(chatId: number, userMessage: string): Promise
       result = message.result;
     }
     if (message.type === "result" && message.subtype !== "success") {
-      throw new Error(`Agent error (${message.subtype})`);
+      const detail = "error_message" in message ? `: ${message.error_message}` : "";
+      throw new Error(`Agent error (${message.subtype}${detail})`);
     }
   }
 
