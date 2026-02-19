@@ -179,6 +179,7 @@ export function watchForResponse(
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let done = false;
+  let lastSentText: string | null = null;
 
   const watcher = chokidar.watch(filePath, {
     persistent: true,
@@ -201,16 +202,16 @@ export function watchForResponse(
 
   watcher.on("change", () => {
     if (done) return;
-    if (debounceTimer) clearTimeout(debounceTimer);
 
-    debounceTimer = setTimeout(async () => {
-      if (done) return;
-      try {
-        const buf = await readFile(filePath);
-        // Only look at bytes appended after injection baseline
+    readFile(filePath)
+      .then((buf) => {
+        if (done) return;
         const newContent = buf.subarray(baselineSize).toString("utf8");
         const lines = newContent.split("\n").filter(Boolean);
 
+        // Find the latest assistant text written so far
+        let latestText: string | null = null;
+        let latestCwd = cwd;
         for (let i = lines.length - 1; i >= 0; i--) {
           try {
             const entry = JSON.parse(lines[i]);
@@ -221,25 +222,35 @@ export function watchForResponse(
             if (textBlocks.length === 0) continue;
             const text: string = textBlocks[textBlocks.length - 1].text;
             if (!text.trim()) continue;
-
-            done = true;
-            clearTimeout(timeoutId);
-            cleanup();
-
-            const entryCwd: string = entry.cwd || cwd;
-            log({ message: `watchForResponse firing for session ${sessionId.slice(0, 8)}: ${text.slice(0, 60)}` });
-            await onResponse({ sessionId, projectName, cwd: entryCwd, filePath, text }).catch(
-              (err) => log({ message: `watchForResponse callback error: ${err instanceof Error ? err.message : String(err)}` })
-            );
-            return;
+            latestText = text;
+            if (entry.cwd) latestCwd = entry.cwd;
+            break;
           } catch {
             continue;
           }
         }
-      } catch {
+
+        // No new text, or same text already sent — don't restart debounce
+        if (!latestText || latestText === lastSentText) return;
+
+        // New text found — debounce to let Claude finish writing this entry
+        if (debounceTimer) clearTimeout(debounceTimer);
+        const capturedText = latestText;
+        const capturedCwd = latestCwd;
+
+        debounceTimer = setTimeout(async () => {
+          if (done || capturedText === lastSentText) return;
+          lastSentText = capturedText;
+          // Keep watching — don't set done, don't cleanup
+          log({ message: `watchForResponse firing for session ${sessionId.slice(0, 8)}: ${capturedText.slice(0, 60)}` });
+          await onResponse({ sessionId, projectName, cwd: capturedCwd, filePath, text: capturedText }).catch(
+            (err) => log({ message: `watchForResponse callback error: ${err instanceof Error ? err.message : String(err)}` })
+          );
+        }, 1000);
+      })
+      .catch(() => {
         // file unreadable — keep watching
-      }
-    }, 1000);
+      });
   });
 
   watcher.on("error", (err: unknown) => {
