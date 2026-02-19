@@ -104,7 +104,12 @@ export async function findClaudePane(targetCwd: string): Promise<TmuxResult> {
 export async function sendKeysToPane(paneId: string, input: string): Promise<void> {
   // Escape single quotes in input for shell safety
   const safe = input.replace(/'/g, "'\\''");
-  await execAsync(`tmux send-keys -t '${paneId}' '${safe}' Enter`);
+  // Send text and Enter separately with a small delay — sending them together in one
+  // tmux send-keys call causes Enter to fire before Claude Code finishes processing
+  // the typed text, resulting in the text appearing but not being submitted.
+  await execAsync(`tmux send-keys -t '${paneId}' '${safe}'`);
+  await new Promise((r) => setTimeout(r, 100));
+  await execAsync(`tmux send-keys -t '${paneId}' Enter`);
 }
 
 export async function injectInput(targetCwd: string, input: string): Promise<TmuxResult> {
