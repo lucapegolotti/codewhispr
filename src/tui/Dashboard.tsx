@@ -5,7 +5,7 @@ import { StatusBar } from "./StatusBar.js";
 import { KeyBar } from "./KeyBar.js";
 import { LogPane } from "./LogPane.js";
 import { SessionPane } from "./SessionPane.js";
-import { createBot } from "../bot.js";
+import { createBot } from "../telegram/bot.js";
 import { clearLogs } from "../logger.js";
 
 type Status = "running" | "stopped";

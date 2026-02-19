@@ -1,7 +1,7 @@
 import { Box, Text } from "ink";
 import { useState, useEffect } from "react";
 import { logEmitter } from "../logger.js";
-import { getActiveSessions } from "../sessions.js";
+import { getActiveSessions } from "../session/adapter.js";
 
 export function SessionPane() {
   const [sessions, setSessions] = useState<number[]>(getActiveSessions());
