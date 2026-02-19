@@ -1,4 +1,6 @@
 import { EventEmitter } from "events";
+import { appendFileSync, mkdirSync } from "fs";
+import { homedir } from "os";
 
 export type LogEntry = {
   time: string;
@@ -6,6 +8,11 @@ export type LogEntry = {
   direction?: "in" | "out";
   message: string;
 };
+
+const LOG_DIR = `${homedir()}/.claude-voice`;
+const LOG_PATH = `${LOG_DIR}/bot.log`;
+
+mkdirSync(LOG_DIR, { recursive: true });
 
 function timestamp(): string {
   return new Date().toLocaleTimeString("en-US", {
@@ -26,6 +33,10 @@ export function log(entry: Omit<LogEntry, "time">): void {
   buffer.push(full);
   if (buffer.length > MAX_BUFFER) buffer.shift();
   logEmitter.emit("log", full);
+
+  const dir = full.direction ? ` [${full.direction}]` : "";
+  const chat = full.chatId ? ` chat=${full.chatId}` : "";
+  appendFileSync(LOG_PATH, `${full.time}${chat}${dir} ${full.message}\n`);
 }
 
 export function getLogs(): LogEntry[] {
