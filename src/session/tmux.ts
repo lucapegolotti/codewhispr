@@ -13,8 +13,13 @@ export type TmuxResult =
   | { found: true; paneId: string }
   | { found: false; reason: "no_tmux" | "no_claude_pane" | "ambiguous"; panes?: TmuxPane[] };
 
+// Claude Code sets process.title to its version string (e.g. "2.1.47"), not "claude"
+function isClaudePane(p: TmuxPane): boolean {
+  return p.command.includes("claude") || /^\d+\.\d+\.\d+/.test(p.command);
+}
+
 export function findBestPane(panes: TmuxPane[], targetCwd: string): TmuxPane | null {
-  const claudePanes = panes.filter((p) => p.command.includes("claude"));
+  const claudePanes = panes.filter(isClaudePane);
   if (claudePanes.length === 0) return null;
 
   // Exact match first
@@ -62,7 +67,7 @@ export async function findClaudePane(targetCwd: string): Promise<TmuxResult> {
   const best = findBestPane(panes, targetCwd);
   if (best) return { found: true, paneId: best.paneId };
 
-  const claudePanes = panes.filter((p) => p.command.includes("claude"));
+  const claudePanes = panes.filter(isClaudePane);
   if (claudePanes.length === 0) return { found: false, reason: "no_claude_pane" };
   if (claudePanes.length > 1) return { found: false, reason: "ambiguous", panes: claudePanes };
 

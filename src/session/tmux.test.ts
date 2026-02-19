@@ -8,6 +8,14 @@ const panes: TmuxPane[] = [
   { paneId: "%4", command: "bash", cwd: "/Users/luca/repositories/my-app" },
 ];
 
+// Claude Code sets process.title to its version string (e.g. "2.1.47")
+const versionPanes: TmuxPane[] = [
+  { paneId: "%1", command: "node", cwd: "/Users/luca/repositories/my-app" },
+  { paneId: "%2", command: "2.1.47", cwd: "/Users/luca/repositories/my-app" },
+  { paneId: "%3", command: "2.1.47", cwd: "/Users/luca/repositories/other-app" },
+  { paneId: "%4", command: "bash", cwd: "/Users/luca/repositories/my-app" },
+];
+
 describe("findBestPane", () => {
   it("returns pane running claude in matching cwd", () => {
     const result = findBestPane(panes, "/Users/luca/repositories/my-app");
@@ -37,5 +45,15 @@ describe("findBestPane", () => {
   it("falls back to parent directory match", () => {
     const result = findBestPane(panes, "/Users/luca/repositories/my-app/subdir");
     expect(result?.paneId).toBe("%2");
+  });
+
+  it("matches pane whose command is a version string (Claude Code sets process.title)", () => {
+    const result = findBestPane(versionPanes, "/Users/luca/repositories/my-app");
+    expect(result?.paneId).toBe("%2");
+  });
+
+  it("returns null for version panes when no cwd matches", () => {
+    const result = findBestPane(versionPanes, "/Users/luca/repositories/nonexistent");
+    expect(result).toBeNull();
   });
 });
