@@ -33,6 +33,9 @@ export async function runAgentTurn(chatId: number, userMessage: string): Promise
     if (message.type === "result" && message.subtype === "success") {
       result = message.result;
     }
+    if (message.type === "result" && message.subtype !== "success") {
+      throw new Error(`Agent error (${message.subtype})`);
+    }
   }
 
   if (capturedSessionId) {
