@@ -17,11 +17,14 @@ function timestamp(): string {
 }
 
 export const logEmitter = new EventEmitter();
+logEmitter.setMaxListeners(20);
+const MAX_BUFFER = 1000;
 let buffer: LogEntry[] = [];
 
 export function log(entry: Omit<LogEntry, "time">): void {
   const full: LogEntry = { time: timestamp(), ...entry };
   buffer.push(full);
+  if (buffer.length > MAX_BUFFER) buffer.shift();
   logEmitter.emit("log", full);
 }
 
