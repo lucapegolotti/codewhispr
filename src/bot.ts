@@ -26,8 +26,10 @@ export function createBot(token: string): Bot {
     try {
       // Download voice note from Telegram
       const file = await ctx.getFile();
+      if (!file.file_path) throw new Error("Telegram did not return a file_path for this voice note");
       const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
       const audioResponse = await fetch(fileUrl);
+      if (!audioResponse.ok) throw new Error(`Failed to download voice note: ${audioResponse.status}`);
       const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
 
       // Transcribe with Whisper
