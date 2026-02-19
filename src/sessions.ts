@@ -2,22 +2,34 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { narrate } from "./narrator.js";
 import { log, logEmitter } from "./logger.js";
 import { homedir } from "os";
+import { existsSync, readFileSync } from "fs";
 
 const sessions = new Map<number, string>();
+
+const ATTACHED_SESSION_PATH = `${homedir()}/.claude-voice/attached`;
 
 const SYSTEM_PROMPT = `You are a coding assistant accessed via Telegram.
 When the user mentions a project by name, look for it in ${homedir()}/repositories/.
 If the project directory is ambiguous, ask the user to clarify.
 Keep responses concise.`;
 
+function getAttachedSessionId(): string | null {
+  if (!existsSync(ATTACHED_SESSION_PATH)) return null;
+  const id = readFileSync(ATTACHED_SESSION_PATH, "utf8").trim();
+  return id || null;
+}
+
 export function getActiveSessions(): number[] {
   return [...sessions.keys()];
 }
 
 export async function runAgentTurn(chatId: number, userMessage: string): Promise<string> {
-  const existingSessionId = sessions.get(chatId);
+  const attachedSessionId = getAttachedSessionId();
+  const existingSessionId = attachedSessionId ?? sessions.get(chatId);
 
-  if (!existingSessionId) {
+  if (attachedSessionId) {
+    log({ chatId, message: `joining attached session ${attachedSessionId.slice(0, 8)}...` });
+  } else if (!existingSessionId) {
     log({ chatId, message: "starting new session" });
   }
 
@@ -46,7 +58,7 @@ export async function runAgentTurn(chatId: number, userMessage: string): Promise
     }
   }
 
-  if (capturedSessionId) {
+  if (capturedSessionId && !attachedSessionId) {
     sessions.set(chatId, capturedSessionId);
     log({ chatId, message: "session established" });
     logEmitter.emit("session");
