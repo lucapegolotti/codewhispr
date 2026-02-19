@@ -31,7 +31,7 @@ export function Setup({ envPath, onComplete }: Props) {
     if (step === STEPS.length - 1) {
       const content = STEPS.map(s => {
         const v = next[s.key] ?? "";
-        const escaped = v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        const escaped = v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$");
         return `${s.key}="${escaped}"`;
       }).join("\n") + "\n";
       try {
