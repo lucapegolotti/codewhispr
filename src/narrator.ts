@@ -5,7 +5,7 @@ function getClient(): Anthropic {
   return (anthropic ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }));
 }
 
-const SYSTEM = `You relay what a coding agent responded. Convert the output to plain text suitable for a Telegram message or voice playback.
+const SYSTEM = `You relay what a coding agent responded to a user's request. Convert the output to plain text suitable for a Telegram message or voice playback.
 
 Rules:
 - No markdown, no code blocks, no bullet points, no headers
@@ -14,15 +14,22 @@ Rules:
 - If the agent ran commands or edited files, describe what it did and what the results were
 - If the agent answered a question, relay the answer directly and completely
 - Preserve technical details accurately: file names, error messages, line numbers, command output
-- If there were errors, state them plainly`;
+- If there were errors, state them plainly
+- Only relay what the agent actually said — do not add your own commentary or interpretation`;
 
-export async function narrate(agentResult: string): Promise<string> {
+export async function narrate(agentResult: string, userMessage?: string): Promise<string> {
+  if (agentResult.length < 80) return agentResult;
+
+  const content = userMessage
+    ? `User asked: ${userMessage}\n\nAgent responded: ${agentResult}`
+    : agentResult;
+
   try {
     const response = await getClient().messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
       system: SYSTEM,
-      messages: [{ role: "user", content: agentResult }],
+      messages: [{ role: "user", content }],
     });
     if (response.content.length === 0) throw new Error("Narrator returned empty content");
     const block = response.content[0];

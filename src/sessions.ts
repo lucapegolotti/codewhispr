@@ -165,5 +165,5 @@ export async function runAgentTurn(chatId: number, userMessage: string): Promise
 
   const raw = result || "The agent completed the task but produced no output.";
   if (/\braw\b/i.test(userMessage)) return raw;
-  return narrate(raw);
+  return narrate(raw, userMessage);
 }
