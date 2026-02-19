@@ -2,9 +2,10 @@ import { Bot, Context, InputFile, InlineKeyboard } from "grammy";
 import { handleTurn } from "../agent/loop.js";
 import { transcribeAudio, synthesizeSpeech } from "../voice.js";
 import { log } from "../logger.js";
-import { listSessions, ATTACHED_SESSION_PATH, getAttachedSession } from "../session/history.js";
-import { registerForNotifications, resolveWaitingAction } from "./notifications.js";
+import { listSessions, ATTACHED_SESSION_PATH, getAttachedSession, getSessionFilePath } from "../session/history.js";
+import { registerForNotifications, resolveWaitingAction, notifyResponse } from "./notifications.js";
 import { injectInput } from "../session/tmux.js";
+import { watchForResponse, getFileSize } from "../session/monitor.js";
 import { writeFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 
@@ -41,12 +42,43 @@ async function sendSessionPicker(ctx: Context): Promise<void> {
   await ctx.reply(`Available sessions:\n\n${lines.join("\n\n")}`, { reply_markup: keyboard });
 }
 
+async function startInjectionWatcher(
+  attached: { sessionId: string; cwd: string },
+  onDone?: () => void
+): Promise<void> {
+  const filePath = await getSessionFilePath(attached.sessionId);
+  if (!filePath) {
+    log({ message: `watchForResponse: could not find JSONL for session ${attached.sessionId.slice(0, 8)}` });
+    onDone?.();
+    return;
+  }
+  const baseline = await getFileSize(filePath);
+  log({ message: `watchForResponse started for ${attached.sessionId.slice(0, 8)}, baseline=${baseline}` });
+  watchForResponse(filePath, baseline, async (state) => {
+    onDone?.();
+    await notifyResponse(state);
+  });
+}
+
 async function processTextTurn(ctx: Context, chatId: number, text: string): Promise<void> {
   const attached = await getAttachedSession();
   const reply = await handleTurn(chatId, text, undefined, attached?.cwd);
 
   if (reply === "__SESSION_PICKER__") {
     await sendSessionPicker(ctx);
+    return;
+  }
+
+  if (reply === "__INJECTED__") {
+    await ctx.replyWithChatAction("typing");
+    const typingInterval = setInterval(() => {
+      ctx.replyWithChatAction("typing").catch(() => {});
+    }, 4000);
+    if (attached) {
+      await startInjectionWatcher(attached, () => clearInterval(typingInterval));
+    } else {
+      clearInterval(typingInterval);
+    }
     return;
   }
 
@@ -93,6 +125,19 @@ export function createBot(token: string): Bot {
 
       if (reply === "__SESSION_PICKER__") {
         await sendSessionPicker(ctx);
+        return;
+      }
+
+      if (reply === "__INJECTED__") {
+        await ctx.replyWithChatAction("typing");
+        const typingInterval = setInterval(() => {
+          ctx.replyWithChatAction("typing").catch(() => {});
+        }, 4000);
+        if (attached) {
+          await startInjectionWatcher(attached, () => clearInterval(typingInterval));
+        } else {
+          clearInterval(typingInterval);
+        }
         return;
       }
 

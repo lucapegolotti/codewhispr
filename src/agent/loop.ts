@@ -36,7 +36,7 @@ export async function handleTurn(
       if (cwd) {
         const result = await injectInput(cwd, userMessage);
         if (result.found) {
-          reply = `Sent to Claude. I'll let you know when it responds.`;
+          reply = `__INJECTED__`;
         } else if (result.reason === "ambiguous") {
           reply = `Multiple Claude sessions found. Please use /sessions to attach to the right one first.`;
         } else {
@@ -50,10 +50,15 @@ export async function handleTurn(
     }
 
     case Intent.GENERAL_CHAT: {
-      // If a session is attached, let Claude respond conversationally via Agent SDK.
-      // Only use the fallback when there's truly nothing to talk to.
       if (cwd) {
-        reply = await runAgentTurn(chatId, userMessage);
+        const result = await injectInput(cwd, userMessage);
+        if (result.found) {
+          reply = `__INJECTED__`;
+        } else if (result.reason === "ambiguous") {
+          reply = `Multiple Claude sessions found. Please use /sessions to attach to the right one first.`;
+        } else {
+          reply = await runAgentTurn(chatId, userMessage);
+        }
       } else {
         reply = "No session attached. Use /sessions to pick one, or send a command.";
       }
@@ -72,7 +77,7 @@ export async function handleTurn(
       if (cwd) {
         const result = await injectInput(cwd, userMessage);
         if (result.found) {
-          reply = `Sent to Claude. I'll let you know when it responds.`;
+          reply = `__INJECTED__`;
         } else if (result.reason === "ambiguous") {
           reply = `Multiple Claude sessions found. Please use /sessions to attach to the right one first.`;
         } else {

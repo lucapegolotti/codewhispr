@@ -1,5 +1,5 @@
 import chokidar from "chokidar";
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import { PROJECTS_PATH } from "./history.js";
 import { log } from "../logger.js";
 
@@ -159,4 +159,104 @@ export function startMonitor(onWaiting: WaitingCallback, onResponse?: ResponseCa
     watcher.close();
     for (const t of timers.values()) clearTimeout(t);
   };
+}
+
+// Watches a specific JSONL file for new assistant text after a given byte offset.
+// Calls onResponse with the first new assistant text found, then stops.
+// Used for targeted per-injection response tracking (avoids debounce issues
+// when Claude Code continuously writes tool results during processing).
+export function watchForResponse(
+  filePath: string,
+  baselineSize: number,
+  onResponse: ResponseCallback,
+  timeoutMs = 300_000
+): () => void {
+  const parts = filePath.split("/");
+  const sessionId = parts[parts.length - 1].replace(".jsonl", "");
+  const projectDir = parts[parts.length - 2];
+  const projectName = decodeProjectName(projectDir);
+  const cwd = parts.slice(0, -2).join("/"); // approximation; real cwd read from file
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let done = false;
+
+  const watcher = chokidar.watch(filePath, {
+    persistent: true,
+    ignoreInitial: true,
+    awaitWriteFinish: false,
+  });
+
+  const cleanup = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    watcher.close();
+  };
+
+  const timeoutId = setTimeout(() => {
+    if (!done) {
+      done = true;
+      log({ message: `watchForResponse timeout for session ${sessionId.slice(0, 8)}` });
+      cleanup();
+    }
+  }, timeoutMs);
+
+  watcher.on("change", () => {
+    if (done) return;
+    if (debounceTimer) clearTimeout(debounceTimer);
+
+    debounceTimer = setTimeout(async () => {
+      if (done) return;
+      try {
+        const buf = await readFile(filePath);
+        // Only look at bytes appended after injection baseline
+        const newContent = buf.subarray(baselineSize).toString("utf8");
+        const lines = newContent.split("\n").filter(Boolean);
+
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            const entry = JSON.parse(lines[i]);
+            if (entry.type !== "assistant") continue;
+            const textBlocks = (entry.message?.content ?? []).filter(
+              (c: { type: string }) => c.type === "text"
+            );
+            if (textBlocks.length === 0) continue;
+            const text: string = textBlocks[textBlocks.length - 1].text;
+            if (!text.trim()) continue;
+
+            done = true;
+            clearTimeout(timeoutId);
+            cleanup();
+
+            const entryCwd: string = entry.cwd || cwd;
+            log({ message: `watchForResponse firing for session ${sessionId.slice(0, 8)}: ${text.slice(0, 60)}` });
+            await onResponse({ sessionId, projectName, cwd: entryCwd, filePath, text }).catch(
+              (err) => log({ message: `watchForResponse callback error: ${err instanceof Error ? err.message : String(err)}` })
+            );
+            return;
+          } catch {
+            continue;
+          }
+        }
+      } catch {
+        // file unreadable — keep watching
+      }
+    }, 1000);
+  });
+
+  watcher.on("error", (err: unknown) => {
+    log({ message: `watchForResponse error: ${err instanceof Error ? err.message : String(err)}` });
+  });
+
+  return () => {
+    done = true;
+    clearTimeout(timeoutId);
+    cleanup();
+  };
+}
+
+export async function getFileSize(filePath: string): Promise<number> {
+  try {
+    return (await stat(filePath)).size;
+  } catch {
+    return 0;
+  }
 }
