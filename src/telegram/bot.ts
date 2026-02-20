@@ -1,4 +1,5 @@
 import { Bot, Context, InputFile, InlineKeyboard } from "grammy";
+import { splitMessage, sendMarkdownReply } from "./utils.js";
 import { handleTurn, clearChatState } from "../agent/loop.js";
 import { summarizeSession } from "../agent/summarizer.js";
 import { transcribeAudio, synthesizeSpeech, polishTranscript } from "../voice.js";
@@ -37,30 +38,6 @@ function timeAgo(date: Date): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
-}
-
-function splitMessage(text: string, limit = 4000): string[] {
-  if (text.length <= limit) return [text];
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > limit) {
-    let splitAt = remaining.lastIndexOf("\n", limit);
-    if (splitAt <= 0) splitAt = limit;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).replace(/^\n/, "");
-  }
-  if (remaining.length > 0) chunks.push(remaining);
-  return chunks;
-}
-
-async function sendMarkdownReply(ctx: Context, text: string): Promise<void> {
-  for (const chunk of splitMessage(text)) {
-    try {
-      await ctx.reply(chunk, { parse_mode: "Markdown" });
-    } catch {
-      await ctx.reply(chunk);
-    }
-  }
 }
 
 async function sendSessionPicker(ctx: Context): Promise<void> {

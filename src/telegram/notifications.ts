@@ -6,36 +6,13 @@ import { log } from "../logger.js";
 import { writeFile, readFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
+import { sendMarkdownMessage } from "./utils.js";
 
 const CLAUDE_VOICE_DIR = join(homedir(), ".claude-voice");
 const CHAT_ID_PATH = join(CLAUDE_VOICE_DIR, "chat-id");
 
 let registeredBot: Bot | null = null;
 let registeredChatId: number | null = null;
-
-export function splitMessage(text: string, limit = 4000): string[] {
-  if (text.length <= limit) return [text];
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > limit) {
-    let splitAt = remaining.lastIndexOf("\n", limit);
-    if (splitAt <= 0) splitAt = limit;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).replace(/^\n/, "");
-  }
-  if (remaining.length > 0) chunks.push(remaining);
-  return chunks;
-}
-
-async function sendMarkdownMessage(bot: Bot, chatId: number, text: string): Promise<void> {
-  for (const chunk of splitMessage(text)) {
-    try {
-      await bot.api.sendMessage(chatId, chunk, { parse_mode: "Markdown" });
-    } catch {
-      await bot.api.sendMessage(chatId, chunk);
-    }
-  }
-}
 
 export async function sendPing(text: string): Promise<void> {
   if (!registeredBot || !registeredChatId) return;

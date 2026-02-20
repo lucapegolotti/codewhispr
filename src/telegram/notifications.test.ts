@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { splitMessage, sendStartupMessage, registerForNotifications, notifyResponse, notifyPermission } from "./notifications.js";
+import { sendStartupMessage, registerForNotifications, notifyResponse, notifyPermission } from "./notifications.js";
+import { splitMessage } from "./utils.js";
 
 vi.mock("fs/promises", () => ({
   readFile: vi.fn(),
