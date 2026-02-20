@@ -117,7 +117,7 @@ async function startInjectionWatcher(
       onDone?.();
       await (onResponse ?? notifyResponse)(state);
     },
-    120_000,
+    3_600_000,
     () => sendPing("⏳ Still working...")
   );
 }
