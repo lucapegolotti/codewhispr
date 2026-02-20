@@ -142,4 +142,27 @@ export function registerCommands(bot: Bot): void {
     await ctx.reply("Restarting…").catch(() => {});
     setTimeout(() => process.exit(0), 500);
   });
+
+  const HELP_TEXT = [
+    "*claude\\-voice commands*",
+    "",
+    "/sessions \\— pick a Claude Code session to attach to",
+    "/detach \\— detach from current session",
+    "/status \\— show attached session info",
+    "/summarize \\— summarise the current session",
+    "/compact \\— trigger /compact in Claude Code",
+    "/clear \\— clear Claude Code context",
+    "/close\\_session \\— close the Claude Code window",
+    "/polishvoice \\— toggle voice transcript polishing on/off",
+    "/restart \\— restart the bot",
+    "/help \\— show this list",
+  ].join("\n");
+
+  bot.command("help", async (ctx) => {
+    await ctx.reply(HELP_TEXT, { parse_mode: "MarkdownV2" }).catch(() =>
+      ctx.reply(
+        "Commands: /sessions /detach /status /summarize /compact /clear /close_session /polishvoice /restart /help"
+      )
+    );
+  });
 }
