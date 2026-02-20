@@ -12,6 +12,7 @@ import { watchForResponse, getFileSize } from "../session/monitor.js";
 import { respondToPermission } from "../session/permissions.js";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import { homedir } from "os";
+import { join } from "path";
 
 const pendingSessions = new Map<string, { sessionId: string; cwd: string; projectName: string }>();
 
@@ -258,6 +259,66 @@ export function createBot(token: string): Bot {
     } catch (err) {
       log({ chatId, message: `Voice error: ${err instanceof Error ? err.message : String(err)}` });
       await ctx.reply("Couldn't process your voice message — try again?");
+    }
+  });
+
+  // Handle photos and image documents forwarded from Telegram.
+  // Downloads the image, saves it under ~/.claude-voice/images/, then injects
+  // a message into the Claude Code session so it can read and analyse the file.
+  async function handleImageMessage(
+    ctx: Context,
+    chatId: number,
+    fileId: string,
+    fileMimeType: string | undefined,
+    caption: string
+  ): Promise<void> {
+    registerForNotifications(bot, chatId);
+    await ctx.replyWithChatAction("typing");
+
+    const file = await ctx.api.getFile(fileId);
+    if (!file.file_path) throw new Error("Telegram did not return a file_path for this image");
+
+    const ext = file.file_path.split(".").pop() ?? (fileMimeType?.split("/")[1] ?? "jpg");
+    const imageDir = join(homedir(), ".claude-voice", "images");
+    await mkdir(imageDir, { recursive: true });
+    const imagePath = join(imageDir, `telegram-${Date.now()}.${ext}`);
+
+    const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+    const resp = await fetch(fileUrl);
+    if (!resp.ok) throw new Error(`Failed to download image: ${resp.status}`);
+    await writeFile(imagePath, Buffer.from(await resp.arrayBuffer()));
+
+    log({ chatId, direction: "in", message: `[image] saved to ${imagePath}` });
+
+    const text = caption
+      ? `${caption}\n\n[image: ${imagePath}]`
+      : `[image: ${imagePath}]`;
+
+    await processTextTurn(ctx, chatId, text);
+  }
+
+  bot.on("message:photo", async (ctx) => {
+    const chatId = ctx.chat.id;
+    try {
+      const photos = ctx.message.photo;
+      const largest = photos[photos.length - 1];
+      await handleImageMessage(ctx, chatId, largest.file_id, "image/jpeg", ctx.message.caption ?? "");
+    } catch (err) {
+      log({ chatId, message: `Image error: ${err instanceof Error ? err.message : String(err)}` });
+      await ctx.reply("Couldn't process the image — try again?");
+    }
+  });
+
+  bot.on("message:document", async (ctx) => {
+    const chatId = ctx.chat.id;
+    const doc = ctx.message.document;
+    const mime = doc.mime_type ?? "";
+    if (!mime.startsWith("image/")) return;
+    try {
+      await handleImageMessage(ctx, chatId, doc.file_id, mime, ctx.message.caption ?? "");
+    } catch (err) {
+      log({ chatId, message: `Image error: ${err instanceof Error ? err.message : String(err)}` });
+      await ctx.reply("Couldn't process the image — try again?");
     }
   });
 
