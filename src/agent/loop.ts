@@ -20,5 +20,5 @@ export async function handleTurn(
   if (result.found) {
     return "__INJECTED__";
   }
-  return "No Claude Code running in the attached project. Start Claude Code there, or use /sessions to switch.";
+  return "No Claude Code running at this session. Start it, or use /sessions to switch.";
 }
