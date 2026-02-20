@@ -6,7 +6,7 @@ import { StatusBar } from "./StatusBar.js";
 import { KeyBar } from "./KeyBar.js";
 import { LogPane } from "./LogPane.js";
 import { SessionPane } from "./SessionPane.js";
-import { isHookInstalled, installHook, isPermissionHookInstalled, installPermissionHook } from "../hooks/install.js";
+import { isHookInstalled, installHook, isPermissionHookInstalled, installPermissionHook, isCompactHooksInstalled, installCompactHooks } from "../hooks/install.js";
 
 const PLIST_PATH = `${homedir()}/Library/LaunchAgents/com.claude-voice.bot.plist`;
 const SERVICE_LABEL = "com.claude-voice.bot";
@@ -53,6 +53,7 @@ export function Dashboard({ token: _token }: Props) {
     getServiceStatus().then(setStatus);
     isHookInstalled().then((installed) => setHookStatus(installed ? "installed" : "missing"));
     isPermissionHookInstalled().then((installed) => setPermHookStatus(installed ? "installed" : "missing"));
+    isCompactHooksInstalled().then((installed) => { if (!installed) installCompactHooks().catch(() => {}); });
     startPolling();
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, []);

@@ -334,7 +334,6 @@ export function createBot(token: string): Bot {
       return;
     }
     await sendKeysToPane(pane.paneId, command);
-    await ctx.reply(`Sent \`${command}\` to Claude Code.`, { parse_mode: "Markdown" });
   }
 
   bot.command("compact", async (ctx) => {
