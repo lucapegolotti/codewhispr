@@ -18,8 +18,8 @@ describe("classifyWaitingType", () => {
     expect(classifyWaitingType("Press enter to continue")).toBe(WaitingType.ENTER);
   });
 
-  it("detects question prompt", () => {
-    expect(classifyWaitingType("What should I name the new file?")).toBe(WaitingType.QUESTION);
+  it("returns null for generic question (not a real input prompt)", () => {
+    expect(classifyWaitingType("What should I name the new file?")).toBeNull();
   });
 
   it("returns null for completed statement", () => {

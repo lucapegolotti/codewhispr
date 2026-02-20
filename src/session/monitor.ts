@@ -6,7 +6,6 @@ import { log } from "../logger.js";
 export enum WaitingType {
   YES_NO = "YES_NO",
   ENTER = "ENTER",
-  QUESTION = "QUESTION",
 }
 
 export type SessionWaitingState = {
@@ -38,7 +37,6 @@ export function classifyWaitingType(text: string): WaitingType | null {
 
   if (YES_NO_PATTERNS.some((p) => p.test(trimmed))) return WaitingType.YES_NO;
   if (ENTER_PATTERNS.some((p) => p.test(trimmed))) return WaitingType.ENTER;
-  if (/\?\s*$/.test(trimmed) && trimmed.length > 10) return WaitingType.QUESTION;
 
   return null;
 }
