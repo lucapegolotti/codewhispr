@@ -197,4 +197,108 @@ describe("watchForResponse", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(received).toHaveLength(0);
   });
+
+  it("calls onComplete after result event", async () => {
+    tmpFile = join(tmpdir(), `cv-watch-${Date.now()}.jsonl`);
+    await writeFile(tmpFile, "");
+    const baseline = await getFileSize(tmpFile);
+
+    let completed = false;
+    stopWatcher = watchForResponse(
+      tmpFile,
+      baseline,
+      async () => {},
+      10_000,
+      undefined,
+      50,
+      () => { completed = true; }
+    );
+
+    await new Promise((r) => setTimeout(r, 100));
+    // Write assistant text + result in one append so a single change event sees both
+    await appendFile(tmpFile, assistantLine("Step one.") + JSON.stringify({ type: "result" }) + "\n");
+    // debounceMs(50) + 200ms completion delay
+    await new Promise((r) => setTimeout(r, 400));
+
+    expect(completed).toBe(true);
+  });
+
+  it("calls onComplete after silence timeout", async () => {
+    tmpFile = join(tmpdir(), `cv-watch-${Date.now()}.jsonl`);
+    await writeFile(tmpFile, "");
+    const baseline = await getFileSize(tmpFile);
+
+    let completed = false;
+    stopWatcher = watchForResponse(
+      tmpFile,
+      baseline,
+      async () => {},
+      60_000,
+      undefined,
+      50,
+      () => { completed = true; },
+      200 // silenceMs
+    );
+
+    await new Promise((r) => setTimeout(r, 100));
+    await appendFile(tmpFile, assistantLine("Done."));
+    // wait for debounce(50) + silenceMs(200) + buffer
+    await new Promise((r) => setTimeout(r, 400));
+
+    expect(completed).toBe(true);
+  });
+
+  it("silence timer resets when a new block arrives", async () => {
+    tmpFile = join(tmpdir(), `cv-watch-${Date.now()}.jsonl`);
+    await writeFile(tmpFile, "");
+    const baseline = await getFileSize(tmpFile);
+
+    let completeCount = 0;
+    stopWatcher = watchForResponse(
+      tmpFile,
+      baseline,
+      async () => {},
+      60_000,
+      undefined,
+      50,
+      () => { completeCount++; },
+      300 // silenceMs
+    );
+
+    await new Promise((r) => setTimeout(r, 100));
+    await appendFile(tmpFile, assistantLine("Block one."));
+    await new Promise((r) => setTimeout(r, 200)); // within silenceMs window
+    await appendFile(tmpFile, assistantLine("Block two."));
+    // wait for debounce(50) + silenceMs(300) + buffer
+    await new Promise((r) => setTimeout(r, 500));
+
+    expect(completeCount).toBe(1); // only fires once after the last block
+  });
+
+  it("result event cancels silence timer so onComplete fires only once", async () => {
+    tmpFile = join(tmpdir(), `cv-watch-${Date.now()}.jsonl`);
+    await writeFile(tmpFile, "");
+    const baseline = await getFileSize(tmpFile);
+
+    let completeCount = 0;
+    stopWatcher = watchForResponse(
+      tmpFile,
+      baseline,
+      async () => {},
+      60_000,
+      undefined,
+      50,
+      () => { completeCount++; },
+      500 // silenceMs — long enough that result fires first
+    );
+
+    await new Promise((r) => setTimeout(r, 100));
+    await appendFile(tmpFile, assistantLine("Final answer."));
+    await new Promise((r) => setTimeout(r, 100)); // let debounce fire
+    await appendFile(tmpFile, JSON.stringify({ type: "result" }) + "\n");
+    // wait for completion delay + silence window
+    await new Promise((r) => setTimeout(r, 800));
+
+    expect(completeCount).toBe(1);
+  });
 });

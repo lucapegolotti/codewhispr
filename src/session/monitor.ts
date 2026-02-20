@@ -167,7 +167,8 @@ export function watchForResponse(
   timeoutMs = 120_000,
   onPing?: () => void,
   debounceMs = 1000,
-  onComplete?: () => void
+  onComplete?: () => void,
+  silenceMs = 10_000
 ): () => void {
   const parts = filePath.split("/");
   const sessionId = parts[parts.length - 1].replace(".jsonl", "");
@@ -286,7 +287,7 @@ export function watchForResponse(
                 log({ message: `watchForResponse: session ${sessionId.slice(0, 8)} completed (silence)` });
                 onComplete();
               }
-            }, 10_000);
+            }, silenceMs);
           }
         }, debounceMs);
       })
