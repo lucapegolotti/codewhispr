@@ -89,6 +89,7 @@ async function ensureSession(
 }
 
 let activeWatcherStop: (() => void) | null = null;
+let activeWatcherOnComplete: (() => void) | null = null;
 
 async function startInjectionWatcher(
   attached: { sessionId: string; cwd: string },
@@ -96,10 +97,14 @@ async function startInjectionWatcher(
   onResponse?: (state: SessionResponseState) => Promise<void>,
   onComplete?: () => void
 ): Promise<void> {
-  // Stop any watcher from a previous injection — prevents duplicate notifications
+  // Stop any watcher from a previous injection and flush its completion so the
+  // previous turn's voice summary is still generated even when a new message
+  // interrupts before the result event fires.
   if (activeWatcherStop) {
     activeWatcherStop();
     activeWatcherStop = null;
+    activeWatcherOnComplete?.();
+    activeWatcherOnComplete = null;
   }
 
   const filePath = await getSessionFilePath(attached.sessionId);
@@ -110,13 +115,17 @@ async function startInjectionWatcher(
   }
   const baseline = await getFileSize(filePath);
   log({ message: `watchForResponse started for ${attached.sessionId.slice(0, 8)}, baseline=${baseline}` });
+  activeWatcherOnComplete = onComplete ?? null;
   activeWatcherStop = watchForResponse(
     filePath,
     baseline,
     async (state) => { await (onResponse ?? notifyResponse)(state); },
     3_600_000,
     () => sendPing("⏳ Still working..."),
-    onComplete
+    () => {
+      activeWatcherOnComplete = null;
+      onComplete?.();
+    }
   );
 }
 
