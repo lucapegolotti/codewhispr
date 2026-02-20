@@ -322,6 +322,29 @@ export function createBot(token: string): Bot {
     }
   });
 
+  async function sendClaudeCommand(ctx: Context, command: string): Promise<void> {
+    const attached = await getAttachedSession().catch(() => null);
+    if (!attached) {
+      await ctx.reply("No session attached. Use /sessions to pick one.");
+      return;
+    }
+    const pane = await findClaudePane(attached.cwd).catch(() => ({ found: false as const, reason: "no_tmux" as const }));
+    if (!pane.found) {
+      await ctx.reply("Could not find the Claude Code tmux pane.");
+      return;
+    }
+    await sendKeysToPane(pane.paneId, command);
+    await ctx.reply(`Sent \`${command}\` to Claude Code.`, { parse_mode: "Markdown" });
+  }
+
+  bot.command("compact", async (ctx) => {
+    await sendClaudeCommand(ctx, "/compact");
+  });
+
+  bot.command("clear", async (ctx) => {
+    await sendClaudeCommand(ctx, "/clear");
+  });
+
   bot.command("sessions", async (ctx) => {
     await sendSessionPicker(ctx);
   });
