@@ -10,7 +10,7 @@ import { registerForNotifications, resolveWaitingAction, notifyResponse, sendPin
 import { injectInput, findClaudePane, sendKeysToPane, sendRawKeyToPane, launchClaudeInWindow, killWindow } from "../session/tmux.js";
 import { watchForResponse, getFileSize } from "../session/monitor.js";
 import { respondToPermission } from "../session/permissions.js";
-import { writeFile, mkdir, unlink, access } from "fs/promises";
+import { writeFile, mkdir, unlink, access, stat } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -122,7 +122,23 @@ async function startInjectionWatcher(
     activeWatcherOnComplete = null;
   }
 
-  const latest = await getLatestSessionFileForCwd(attached.cwd);
+  const injectionTime = Date.now();
+  let latest = await getLatestSessionFileForCwd(attached.cwd);
+  // If the file is stale (old session before launch), poll for up to 30s for a newer one
+  if (latest) {
+    const { mtimeMs } = await stat(latest.filePath).catch(() => ({ mtimeMs: 0 }));
+    if (mtimeMs < injectionTime - 60_000) {
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const newer = await getLatestSessionFileForCwd(attached.cwd);
+        if (newer && newer.filePath !== latest.filePath) {
+          latest = newer;
+          break;
+        }
+      }
+    }
+  }
   if (!latest) {
     log({ message: `watchForResponse: could not find JSONL for cwd ${attached.cwd}` });
     onComplete?.();
