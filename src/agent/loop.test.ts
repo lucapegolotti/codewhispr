@@ -24,7 +24,11 @@ import { runAgentTurn } from "../session/adapter.js";
 import { injectInput } from "../session/tmux.js";
 import { handleTurn, clearChatState } from "./loop.js";
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  clearChatState(123);
+  clearChatState(42);
+});
 
 describe("handleTurn", () => {
   it("calls summarizer for SUMMARY_REQUEST", async () => {
@@ -42,12 +46,13 @@ describe("handleTurn", () => {
 
     const result = await handleTurn(123, "install deps", undefined, "/Users/luca/repos/app");
     expect(injectInput).toHaveBeenCalledWith("/Users/luca/repos/app", "install deps");
+    expect(classifyIntent).toHaveBeenCalledWith("install deps", undefined);
     expect(result).toBe("__INJECTED__");
   });
 
   it("falls back to runAgentTurn for COMMAND_EXECUTION when no pane found", async () => {
     vi.mocked(classifyIntent).mockResolvedValue(Intent.COMMAND_EXECUTION);
-    vi.mocked(injectInput).mockResolvedValue({ found: false, reason: "not_found" });
+    vi.mocked(injectInput).mockResolvedValue({ found: false, reason: "no_claude_pane" });
     vi.mocked(runAgentTurn).mockResolvedValue("Installed 3 packages.");
 
     const result = await handleTurn(123, "install deps", undefined, "/Users/luca/repos/app");
@@ -94,6 +99,25 @@ describe("handleTurn", () => {
 
     const result = await handleTurn(123, "show sessions");
     expect(result).toBe("__SESSION_PICKER__");
+  });
+
+  it("injects via tmux for UNKNOWN intent when cwd is known", async () => {
+    vi.mocked(classifyIntent).mockResolvedValue(Intent.UNKNOWN);
+    vi.mocked(injectInput).mockResolvedValue({ found: true, paneId: "%2" });
+
+    const result = await handleTurn(123, "???", undefined, "/Users/luca/repos/app");
+    expect(injectInput).toHaveBeenCalledWith("/Users/luca/repos/app", "???");
+    expect(result).toBe("__INJECTED__");
+  });
+
+  it("calls runAgentTurn for COMMAND_EXECUTION when no cwd at all", async () => {
+    vi.mocked(classifyIntent).mockResolvedValue(Intent.COMMAND_EXECUTION);
+    vi.mocked(runAgentTurn).mockResolvedValue("done");
+
+    const result = await handleTurn(123, "do something");
+    expect(injectInput).not.toHaveBeenCalled();
+    expect(runAgentTurn).toHaveBeenCalledWith(123, "do something");
+    expect(result).toContain("done");
   });
 
   it("returns ambiguous message when multiple panes found", async () => {
