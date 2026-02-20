@@ -16,10 +16,10 @@ function getClient(): Anthropic {
 
 const SYSTEM = `Classify the user message into exactly one of these intents. Respond with the intent name only, no punctuation, no explanation.
 
-SUMMARY_REQUEST — asking what Claude is doing, what happened, summarize session, current status
-COMMAND_EXECUTION — asking Claude to do something: run code, edit files, install deps, fix bugs
+SUMMARY_REQUEST — explicitly asking for a recap or summary of the session (e.g. "summarize", "what have we done so far", "give me a recap", "tldr")
+COMMAND_EXECUTION — asking Claude to do something or check something: run code, edit files, install deps, fix bugs, check git status, verify changes, answer questions about the project
 FOLLOW_UP_INPUT — a short reply to a pending prompt (y, n, yes, no, ok, continue, a number, a filename)
-GENERAL_CHAT — greeting, thanks, off-topic, small talk
+GENERAL_CHAT — greeting, thanks, or small talk unrelated to any project or coding task
 SESSION_LIST — asking to list, pick, switch, or attach to a Claude Code session
 UNKNOWN — anything else`;
 
