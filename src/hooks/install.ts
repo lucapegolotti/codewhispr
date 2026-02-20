@@ -28,8 +28,10 @@ exit 0
 const PERMISSION_HOOK_SCRIPT_PATH = join(homedir(), ".claude", "hooks", "claude-voice-permission.sh");
 
 const PERMISSION_HOOK_SCRIPT = `#!/bin/bash
-# Forwards Claude Code permission requests to the claude-voice Telegram bot.
+# Forwards Claude Code tool permission requests to the claude-voice Telegram bot.
 # Waits for the user to approve or deny via Telegram, then exits accordingly.
+# Clarifying questions (no matching tool name) are ignored — they arrive via the
+# normal JSONL text path and the user replies by sending a message in Telegram.
 
 CLAUDE_VOICE_DIR="$HOME/.claude-voice"
 mkdir -p "$CLAUDE_VOICE_DIR"
@@ -41,8 +43,11 @@ import sys, json, re
 d = json.load(sys.stdin)
 msg = d.get('message', '')
 m = re.search(r'permission to use (\\w+)', msg)
-print(m.group(1) if m else d.get('tool_name', 'unknown'))
-" 2>/dev/null || echo "unknown")
+print(m.group(1) if m else '')
+" 2>/dev/null || echo "")
+
+# Not a tool permission request (e.g. a clarifying question) — let it pass through.
+[ -z "$TOOL_NAME" ] && exit 0
 
 TOOL_INPUT=$(echo "$INPUT" | python3 -c "
 import sys, json
