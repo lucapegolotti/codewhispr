@@ -12,7 +12,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { access } from "fs/promises";
 
-const POLISH_VOICE_OFF_PATH = join(homedir(), ".claude-voice", "polish-voice-off");
+const POLISH_VOICE_OFF_PATH = join(homedir(), ".codewhispr", "polish-voice-off");
 
 async function isVoicePolishEnabled(): Promise<boolean> {
   try {
@@ -45,7 +45,7 @@ export function registerCommands(bot: Bot): void {
   bot.command("polishvoice", async (ctx) => {
     const enabled = await isVoicePolishEnabled();
     if (enabled) {
-      await mkdir(join(homedir(), ".claude-voice"), { recursive: true });
+      await mkdir(join(homedir(), ".codewhispr"), { recursive: true });
       await writeFile(POLISH_VOICE_OFF_PATH, "", "utf8");
       await ctx.reply("Voice polish *off*. Raw Whisper transcripts will be injected.", { parse_mode: "Markdown" });
     } else {

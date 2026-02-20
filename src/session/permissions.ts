@@ -4,7 +4,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { log } from "../logger.js";
 
-const CLAUDE_VOICE_DIR = join(homedir(), ".claude-voice");
+const CODEWHISPR_DIR = join(homedir(), ".codewhispr");
 
 export type PermissionRequest = {
   requestId: string;
@@ -48,7 +48,7 @@ async function extractToolCommand(transcriptPath: string, toolName: string): Pro
 export function watchPermissionRequests(
   onRequest: (req: PermissionRequest) => Promise<void>
 ): () => void {
-  const watcher = chokidar.watch(CLAUDE_VOICE_DIR, {
+  const watcher = chokidar.watch(CODEWHISPR_DIR, {
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 100 },
@@ -88,8 +88,8 @@ export function watchPermissionRequests(
 }
 
 export async function respondToPermission(requestId: string, action: "approve" | "deny"): Promise<void> {
-  await mkdir(CLAUDE_VOICE_DIR, { recursive: true });
-  const responsePath = join(CLAUDE_VOICE_DIR, `permission-response-${requestId}`);
+  await mkdir(CODEWHISPR_DIR, { recursive: true });
+  const responsePath = join(CODEWHISPR_DIR, `permission-response-${requestId}`);
   await writeFile(responsePath, action, "utf8");
   log({ message: `permission response: ${action} (${requestId.slice(0, 8)})` });
 }

@@ -19,7 +19,7 @@ export async function handleImageMessage(
   if (!file.file_path) throw new Error("Telegram did not return a file_path for this image");
 
   const ext = file.file_path.split(".").pop() ?? (fileMimeType?.split("/")[1] ?? "jpg");
-  const imageDir = join(homedir(), ".claude-voice", "images");
+  const imageDir = join(homedir(), ".codewhispr", "images");
   await mkdir(imageDir, { recursive: true });
   const imagePath = join(imageDir, `telegram-${Date.now()}.${ext}`);
 

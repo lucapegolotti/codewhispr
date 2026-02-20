@@ -2,11 +2,11 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join, dirname } from "path";
 
-const HOOK_SCRIPT_PATH = join(homedir(), ".claude", "hooks", "claude-voice-stop.sh");
+const HOOK_SCRIPT_PATH = join(homedir(), ".claude", "hooks", "codewhispr-stop.sh");
 const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
 
 const HOOK_SCRIPT = `#!/bin/bash
-# Signals claude-voice bot that Claude has finished a turn.
+# Signals codewhispr bot that Claude has finished a turn.
 # Appends a result event to the session JSONL so the bot's watcher
 # can fire the voice narration without relying on a silence timeout.
 
@@ -25,16 +25,16 @@ fi
 exit 0
 `;
 
-const PERMISSION_HOOK_SCRIPT_PATH = join(homedir(), ".claude", "hooks", "claude-voice-permission.sh");
+const PERMISSION_HOOK_SCRIPT_PATH = join(homedir(), ".claude", "hooks", "codewhispr-permission.sh");
 
 const PERMISSION_HOOK_SCRIPT = `#!/bin/bash
-# Forwards Claude Code tool permission requests to the claude-voice Telegram bot.
+# Forwards Claude Code tool permission requests to the codewhispr Telegram bot.
 # Waits for the user to approve or deny via Telegram, then exits accordingly.
 # Clarifying questions (no matching tool name) are ignored — they arrive via the
 # normal JSONL text path and the user replies by sending a message in Telegram.
 
-CLAUDE_VOICE_DIR="$HOME/.claude-voice"
-mkdir -p "$CLAUDE_VOICE_DIR"
+CODEWHISPR_DIR="$HOME/.codewhispr"
+mkdir -p "$CODEWHISPR_DIR"
 
 INPUT=$(cat)
 
@@ -58,8 +58,8 @@ print(d.get('message', json.dumps(d)))
 TRANSCRIPT_PATH=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('transcript_path',''))" 2>/dev/null || echo "")
 
 REQUEST_ID=$(python3 -c "import uuid; print(str(uuid.uuid4()))")
-REQUEST_FILE="$CLAUDE_VOICE_DIR/permission-request-\${REQUEST_ID}.json"
-RESPONSE_FILE="$CLAUDE_VOICE_DIR/permission-response-\${REQUEST_ID}"
+REQUEST_FILE="$CODEWHISPR_DIR/permission-request-\${REQUEST_ID}.json"
+RESPONSE_FILE="$CODEWHISPR_DIR/permission-response-\${REQUEST_ID}"
 
 python3 -c "
 import json, sys
@@ -88,24 +88,24 @@ rm -f "$REQUEST_FILE"
 exit 0
 `;
 
-const COMPACT_START_HOOK_PATH = join(homedir(), ".claude", "hooks", "claude-voice-compact-start.sh");
-const COMPACT_END_HOOK_PATH = join(homedir(), ".claude", "hooks", "claude-voice-compact-end.sh");
+const COMPACT_START_HOOK_PATH = join(homedir(), ".claude", "hooks", "codewhispr-compact-start.sh");
+const COMPACT_END_HOOK_PATH = join(homedir(), ".claude", "hooks", "codewhispr-compact-end.sh");
 
 // Shared helper used by both compact hooks to send a Telegram notification.
 const COMPACT_HOOK_COMMON = `
-CLAUDE_VOICE_DIR="$HOME/.claude-voice"
-TOKEN=$(cat "$CLAUDE_VOICE_DIR/bot-token" 2>/dev/null)
-CHAT_ID=$(cat "$CLAUDE_VOICE_DIR/chat-id" 2>/dev/null)
+CODEWHISPR_DIR="$HOME/.codewhispr"
+TOKEN=$(cat "$CODEWHISPR_DIR/bot-token" 2>/dev/null)
+CHAT_ID=$(cat "$CODEWHISPR_DIR/chat-id" 2>/dev/null)
 [ -z "$TOKEN" ] || [ -z "$CHAT_ID" ] && exit 0
 
 # Only notify for the currently attached session (match by cwd)
-ATTACHED_CWD=$(sed -n '2p' "$CLAUDE_VOICE_DIR/attached" 2>/dev/null)
+ATTACHED_CWD=$(sed -n '2p' "$CODEWHISPR_DIR/attached" 2>/dev/null)
 HOOK_CWD=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null)
 [ -n "$ATTACHED_CWD" ] && [ "$HOOK_CWD" != "$ATTACHED_CWD" ] && exit 0
 `;
 
 const COMPACT_START_HOOK_SCRIPT = `#!/bin/bash
-# Notifies the claude-voice Telegram bot when context compaction begins.
+# Notifies the codewhispr Telegram bot when context compaction begins.
 INPUT=$(cat)
 ${COMPACT_HOOK_COMMON}
 curl -s -X POST "https://api.telegram.org/bot\${TOKEN}/sendMessage" \\
@@ -115,7 +115,7 @@ exit 0
 `;
 
 const COMPACT_END_HOOK_SCRIPT = `#!/bin/bash
-# Notifies the claude-voice Telegram bot when context compaction finishes.
+# Notifies the codewhispr Telegram bot when context compaction finishes.
 # Fires via SessionStart with source=compact (Claude Code restarts the session after compaction).
 INPUT=$(cat)
 SOURCE=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('source',''))" 2>/dev/null)
@@ -133,7 +133,7 @@ export async function isCompactHooksInstalled(): Promise<boolean> {
     const settings = JSON.parse(raw);
     const preCompactGroups: { hooks?: { command?: string }[] }[] = settings?.hooks?.PreCompact ?? [];
     return preCompactGroups.some((group) =>
-      group.hooks?.some((h) => h.command?.includes("claude-voice-compact-start"))
+      group.hooks?.some((h) => h.command?.includes("codewhispr-compact-start"))
     );
   } catch {
     return false;
@@ -160,7 +160,7 @@ export async function installCompactHooks(): Promise<void> {
   type HookGroup = { matcher?: string; hooks: { type: string; command: string }[] };
   const preCompactGroups = hooks.PreCompact as HookGroup[];
   const preAlreadyInstalled = preCompactGroups.some((g) =>
-    g.hooks?.some((h) => h.command?.includes("claude-voice-compact-start"))
+    g.hooks?.some((h) => h.command?.includes("codewhispr-compact-start"))
   );
   if (!preAlreadyInstalled) {
     preCompactGroups.push({
@@ -173,7 +173,7 @@ export async function installCompactHooks(): Promise<void> {
   if (!hooks.SessionStart) hooks.SessionStart = [];
   const sessionStartGroups = hooks.SessionStart as HookGroup[];
   const sessionAlreadyInstalled = sessionStartGroups.some((g) =>
-    g.hooks?.some((h) => h.command?.includes("claude-voice-compact-end"))
+    g.hooks?.some((h) => h.command?.includes("codewhispr-compact-end"))
   );
   if (!sessionAlreadyInstalled) {
     sessionStartGroups.push({
@@ -192,7 +192,7 @@ export async function isPermissionHookInstalled(): Promise<boolean> {
     const settings = JSON.parse(raw);
     const notifGroups: { hooks?: { command?: string }[] }[] = settings?.hooks?.Notification ?? [];
     return notifGroups.some((group) =>
-      group.hooks?.some((h) => h.command?.includes("claude-voice-permission"))
+      group.hooks?.some((h) => h.command?.includes("codewhispr-permission"))
     );
   } catch {
     return false;
@@ -218,7 +218,7 @@ export async function installPermissionHook(): Promise<void> {
   const notifGroups = hooks.Notification as NotifGroup[];
 
   const alreadyInstalled = notifGroups.some((g) =>
-    g.hooks?.some((h) => h.command?.includes("claude-voice-permission"))
+    g.hooks?.some((h) => h.command?.includes("codewhispr-permission"))
   );
 
   if (!alreadyInstalled) {
@@ -243,7 +243,7 @@ export async function isHookInstalled(): Promise<boolean> {
     const settings = JSON.parse(raw);
     const stopGroups: { hooks?: { command?: string }[] }[] = settings?.hooks?.Stop ?? [];
     return stopGroups.some((group) =>
-      group.hooks?.some((h) => h.command?.includes("claude-voice-stop"))
+      group.hooks?.some((h) => h.command?.includes("codewhispr-stop"))
     );
   } catch {
     return false;
@@ -269,7 +269,7 @@ export async function installHook(): Promise<void> {
 
   const stopGroups = hooks.Stop as { matcher?: string; hooks: { type: string; command: string }[] }[];
   const alreadyInstalled = stopGroups.some((g) =>
-    g.hooks?.some((h) => h.command?.includes("claude-voice-stop"))
+    g.hooks?.some((h) => h.command?.includes("codewhispr-stop"))
   );
 
   if (!alreadyInstalled) {

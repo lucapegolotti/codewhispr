@@ -8,8 +8,8 @@ import { homedir } from "os";
 import { join } from "path";
 import { sendMarkdownMessage } from "./utils.js";
 
-const CLAUDE_VOICE_DIR = join(homedir(), ".claude-voice");
-const CHAT_ID_PATH = join(CLAUDE_VOICE_DIR, "chat-id");
+const CODEWHISPR_DIR = join(homedir(), ".codewhispr");
+const CHAT_ID_PATH = join(CODEWHISPR_DIR, "chat-id");
 
 let registeredBot: Bot | null = null;
 let registeredChatId: number | null = null;
@@ -22,7 +22,7 @@ export async function sendPing(text: string): Promise<void> {
 export function registerForNotifications(bot: Bot, chatId: number): void {
   registeredBot = bot;
   registeredChatId = chatId;
-  mkdir(CLAUDE_VOICE_DIR, { recursive: true })
+  mkdir(CODEWHISPR_DIR, { recursive: true })
     .then(() => writeFile(CHAT_ID_PATH, String(chatId), "utf8"))
     .catch(() => {});
 }
@@ -41,9 +41,9 @@ export async function sendStartupMessage(bot: Bot): Promise<void> {
     ? `Attached: \`${attached.sessionId.slice(0, 8)}…\``
     : "No session attached — use /sessions to pick one.";
   try {
-    await bot.api.sendMessage(chatId, `claude\\-voice started\\. ${sessionMsg}`, { parse_mode: "MarkdownV2" });
+    await bot.api.sendMessage(chatId, `codewhispr started\\. ${sessionMsg}`, { parse_mode: "MarkdownV2" });
   } catch {
-    await bot.api.sendMessage(chatId, `claude-voice started. ${attached ? "Attached: " + attached.sessionId.slice(0, 8) : "No session attached."}`).catch(() => {});
+    await bot.api.sendMessage(chatId, `codewhispr started. ${attached ? "Attached: " + attached.sessionId.slice(0, 8) : "No session attached."}`).catch(() => {});
   }
 }
 

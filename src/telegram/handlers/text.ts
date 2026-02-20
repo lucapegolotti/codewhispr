@@ -31,7 +31,7 @@ export async function ensureSession(
   if (recent.length === 0) return null;
 
   const s = recent[0];
-  await mkdir(`${homedir()}/.claude-voice`, { recursive: true });
+  await mkdir(`${homedir()}/.codewhispr`, { recursive: true });
   await writeFile(ATTACHED_SESSION_PATH, `${s.sessionId}\n${s.cwd}`, "utf8");
   clearChatState(chatId);
   await ctx.reply(`Auto-attached to \`${s.projectName}\`.`, { parse_mode: "Markdown" });

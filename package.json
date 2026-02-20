@@ -1,9 +1,9 @@
 {
-  "name": "claude-voice",
+  "name": "codewhispr",
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "claude-voice": "bin/claude-voice"
+    "codewhispr": "bin/claude-voice"
   },
   "scripts": {
     "start": "tsx src/index.ts",

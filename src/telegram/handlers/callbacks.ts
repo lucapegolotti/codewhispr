@@ -86,7 +86,7 @@ export function registerCallbacks(bot: Bot): void {
 
       if (pane.found) {
         // Claude Code is running — attach immediately
-        await mkdir(`${homedir()}/.claude-voice`, { recursive: true });
+        await mkdir(`${homedir()}/.codewhispr`, { recursive: true });
         await writeFile(ATTACHED_SESSION_PATH, `${session.sessionId}\n${session.cwd}`, "utf8");
         setLaunchedPaneId(undefined); // clear any stale launched pane
         clearChatState(ctx.chat!.id);
@@ -138,7 +138,7 @@ export function registerCallbacks(bot: Bot): void {
       }
 
       // Attach to this project's cwd — sessionId will be discovered lazily by the watcher
-      await mkdir(`${homedir()}/.claude-voice`, { recursive: true });
+      await mkdir(`${homedir()}/.codewhispr`, { recursive: true });
       await writeFile(ATTACHED_SESSION_PATH, `${session.sessionId}\n${session.cwd}`, "utf8");
       setLaunchedPaneId(paneId); // fallback for injection while Claude Code initializes
       clearChatState(ctx.chat!.id);

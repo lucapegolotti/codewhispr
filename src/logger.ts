@@ -9,7 +9,7 @@ export type LogEntry = {
   message: string;
 };
 
-const LOG_DIR = `${homedir()}/.claude-voice`;
+const LOG_DIR = `${homedir()}/.codewhispr`;
 const LOG_PATH = `${LOG_DIR}/bot.log`;
 
 mkdirSync(LOG_DIR, { recursive: true });

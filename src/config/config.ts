@@ -7,7 +7,7 @@ export type BotConfig = {
   allowedChatId?: number;
 };
 
-export const DEFAULT_CONFIG_PATH = join(homedir(), ".claude-voice", "config.json");
+export const DEFAULT_CONFIG_PATH = join(homedir(), ".codewhispr", "config.json");
 
 const DEFAULTS: BotConfig = {
   reposFolder: join(homedir(), "repositories"),

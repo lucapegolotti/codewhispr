@@ -1,4 +1,4 @@
-# claude-voice
+# codewhispr
 
 > Control Claude Code from your phone via Telegram — text, voice, or image.
 
@@ -6,7 +6,7 @@ Send a message from Telegram. Claude Code runs on your Mac. You get the response
 
 ## What it is
 
-claude-voice is a Telegram bot that acts as a remote interface for [Claude Code](https://claude.ai/code) sessions running in tmux on your machine. You can type or speak commands, receive responses as text or audio, approve tool permissions from your phone, and manage multiple Claude Code sessions from a single Telegram chat.
+codewhispr is a Telegram bot that acts as a remote interface for [Claude Code](https://claude.ai/code) sessions running in tmux on your machine. You can type or speak commands, receive responses as text or audio, approve tool permissions from your phone, and manage multiple Claude Code sessions from a single Telegram chat.
 
 ## Prerequisites
 
@@ -18,11 +18,11 @@ claude-voice is a Telegram bot that acts as a remote interface for [Claude Code]
 ## Install
 
 ```bash
-git clone https://github.com/your-username/claude-voice.git
-cd claude-voice
+git clone https://github.com/your-username/codewhispr.git
+cd codewhispr
 npm install
 npm install -g .
-claude-voice
+codewhispr
 ```
 
 On first run, a setup wizard walks you through:
@@ -62,7 +62,7 @@ Hold the mic button in Telegram and speak your request. The bot:
 
 ### Image messages
 
-Send a photo or image file. The bot saves it to `~/.claude-voice/images/` and injects a message telling Claude Code where to find it. Add a caption to include instructions alongside the image.
+Send a photo or image file. The bot saves it to `~/.codewhispr/images/` and injects a message telling Claude Code where to find it. Add a caption to include instructions alongside the image.
 
 ### Permission approval
 
@@ -97,7 +97,7 @@ Bot (grammy)
       │     OGG → Whisper STT → polish (Claude Haiku) → text
       │
       ├── Image handler (photo/document messages)
-      │     Download → save to ~/.claude-voice/images/ → inject path
+      │     Download → save to ~/.codewhispr/images/ → inject path
       │
       └── Text injection
             tmux send-keys → Claude Code pane
@@ -123,7 +123,7 @@ Bot (grammy)
 
 Claude Code writes its conversation history to `~/.claude/projects/<encoded-cwd>/<uuid>.jsonl`, where the cwd is encoded by replacing `/` with `-`. The bot scans this directory to list available sessions, reads the most recent JSONL per project, and extracts the last assistant message for the `/sessions` picker.
 
-When a session is attached, the bot stores `<sessionId>\n<cwd>` in `~/.claude-voice/attached`.
+When a session is attached, the bot stores `<sessionId>\n<cwd>` in `~/.codewhispr/attached`.
 
 ### Injection
 
@@ -139,11 +139,11 @@ When a `result` event is found (written by the Stop hook), the watcher delivers 
 
 ### The Stop hook
 
-A shell hook (`~/.claude/hooks/claude-voice-stop.sh`) is registered as a Claude Code `Stop` hook. After each Claude turn completes, it appends `{"type":"result","source":"stop-hook"}` to the session JSONL. The bot's watcher detects this event and fires immediately.
+A shell hook (`~/.claude/hooks/codewhispr-stop.sh`) is registered as a Claude Code `Stop` hook. After each Claude turn completes, it appends `{"type":"result","source":"stop-hook"}` to the session JSONL. The bot's watcher detects this event and fires immediately.
 
 ### Permission hook
 
-When Claude Code needs permission to use a tool, a `Notification` hook (`claude-voice-permission.sh`) writes a request to `~/.claude-voice/permission-request-<id>.json` and waits for a response file. The bot detects the request via a file watcher, sends a Telegram message with Approve/Deny buttons, and writes the response when the user taps a button. The hook reads the response and exits with 0 (approve) or 2 (deny).
+When Claude Code needs permission to use a tool, a `Notification` hook (`codewhispr-permission.sh`) writes a request to `~/.codewhispr/permission-request-<id>.json` and waits for a response file. The bot detects the request via a file watcher, sends a Telegram message with Approve/Deny buttons, and writes the response when the user taps a button. The hook reads the response and exits with 0 (approve) or 2 (deny).
 
 ### Voice pipeline
 
@@ -151,7 +151,7 @@ Voice notes (OGG) are transcribed with OpenAI Whisper, optionally cleaned up by 
 
 ## Security
 
-- **Chat ID allowlist** — configure your Telegram chat ID in the setup wizard. The bot silently ignores messages from all other IDs. Store it in `~/.claude-voice/config.json` as `allowedChatId`.
+- **Chat ID allowlist** — configure your Telegram chat ID in the setup wizard. The bot silently ignores messages from all other IDs. Store it in `~/.codewhispr/config.json` as `allowedChatId`.
 - **Bot token** — keep your bot token private. Anyone who can message your bot can run commands on your machine.
 - **Tool permissions** — by default Claude Code runs with `acceptEdits` permission mode. The permission hook lets you approve or deny individual tool uses from Telegram.
 - **Local only** — the bot runs on your Mac. No data goes anywhere except to the Telegram Bot API, Anthropic API, and OpenAI API.
@@ -173,7 +173,7 @@ Voice notes (OGG) are transcribed with OpenAI Whisper, optionally cleaned up by 
 
 ## What else could this be called?
 
-Some names that might suit this better than `claude-voice`:
+Some names that might suit this better than `codewhispr`:
 
 | Name | Vibe |
 |---|---|

@@ -5,8 +5,8 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// The claude-voice binary is at <install-dir>/bin/claude-voice
-const CLAUDE_VOICE_BIN = resolve(__dirname, "..", "..", "bin", "claude-voice");
+// The codewhispr binary is at <install-dir>/bin/codewhispr
+const CODEWHISPR_BIN = resolve(__dirname, "..", "..", "bin", "codewhispr");
 
 type Props = { onComplete: () => void };
 
@@ -17,7 +17,7 @@ export function SetupLaunchd({ onComplete }: Props) {
     if (state !== "prompt") return;
     if (input === "y" || input === "Y") {
       setState("installing");
-      await installLaunchd(CLAUDE_VOICE_BIN).catch(() => {});
+      await installLaunchd(CODEWHISPR_BIN).catch(() => {});
       setState("done");
       setTimeout(onComplete, 1000);
     }

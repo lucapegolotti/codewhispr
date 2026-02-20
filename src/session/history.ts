@@ -4,7 +4,7 @@ import { readdir, readFile, stat } from "fs/promises";
 import { homedir } from "os";
 
 export const PROJECTS_PATH = `${homedir()}/.claude/projects`;
-export const ATTACHED_SESSION_PATH = `${homedir()}/.claude-voice/attached`;
+export const ATTACHED_SESSION_PATH = `${homedir()}/.codewhispr/attached`;
 
 export type SessionInfo = {
   sessionId: string;

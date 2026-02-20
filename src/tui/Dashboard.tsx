@@ -8,8 +8,8 @@ import { LogPane } from "./LogPane.js";
 import { SessionPane } from "./SessionPane.js";
 import { isHookInstalled, installHook, isPermissionHookInstalled, installPermissionHook, isCompactHooksInstalled, installCompactHooks } from "../hooks/install.js";
 
-const PLIST_PATH = `${homedir()}/Library/LaunchAgents/com.claude-voice.bot.plist`;
-const SERVICE_LABEL = "com.claude-voice.bot";
+const PLIST_PATH = `${homedir()}/Library/LaunchAgents/com.codewhispr.bot.plist`;
+const SERVICE_LABEL = "com.codewhispr.bot";
 
 type Status = "running" | "stopped";
 type HookStatus = "unknown" | "installed" | "missing" | "installing";

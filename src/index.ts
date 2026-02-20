@@ -28,8 +28,8 @@ const bot = createBot(token, config.allowedChatId);
 bot.catch(console.error);
 
 // Write the token so compact hook scripts can use curl to call the Telegram API
-mkdir(join(homedir(), ".claude-voice"), { recursive: true })
-  .then(() => writeFile(join(homedir(), ".claude-voice", "bot-token"), token, { mode: 0o600 }))
+mkdir(join(homedir(), ".codewhispr"), { recursive: true })
+  .then(() => writeFile(join(homedir(), ".codewhispr", "bot-token"), token, { mode: 0o600 }))
   .catch((err) => console.error("Failed to write bot-token:", err));
 
 // Start session monitor — watches all Claude JSONL files for waiting state
@@ -52,7 +52,7 @@ process.on("SIGTERM", () => {
 
 await bot.start({
   onStart: () => {
-    console.log("claude-voice bot running");
+    console.log("codewhispr bot running");
     sendStartupMessage(bot).catch(() => {});
   },
 });

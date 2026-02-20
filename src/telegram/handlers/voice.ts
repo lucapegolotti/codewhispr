@@ -11,7 +11,7 @@ import { access } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 
-const POLISH_VOICE_OFF_PATH = join(homedir(), ".claude-voice", "polish-voice-off");
+const POLISH_VOICE_OFF_PATH = join(homedir(), ".codewhispr", "polish-voice-off");
 
 async function isVoicePolishEnabled(): Promise<boolean> {
   try {
