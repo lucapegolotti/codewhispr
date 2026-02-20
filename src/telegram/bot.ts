@@ -94,7 +94,8 @@ async function startInjectionWatcher(
   attached: { sessionId: string; cwd: string },
   chatId: number,
   onDone?: () => void,
-  onResponse?: (state: SessionResponseState) => Promise<void>
+  onResponse?: (state: SessionResponseState) => Promise<void>,
+  onComplete?: () => void
 ): Promise<void> {
   // Stop any watcher from a previous injection — prevents duplicate notifications
   if (activeWatcherStop) {
@@ -118,7 +119,9 @@ async function startInjectionWatcher(
       await (onResponse ?? notifyResponse)(state);
     },
     3_600_000,
-    () => sendPing("⏳ Still working...")
+    () => sendPing("⏳ Still working..."),
+    1000,
+    onComplete
   );
 }
 
@@ -203,33 +206,29 @@ export function createBot(token: string): Bot {
 
         if (attached) {
           const allBlocks: string[] = [];
-          let responseTimer: ReturnType<typeof setTimeout> | null = null;
 
           const voiceResponseHandler = async (state: SessionResponseState) => {
-            // Text blocks are streamed as they arrive. If two blocks arrive in rapid
-            // succession, Telegram delivery order is non-deterministic — acceptable here
-            // since the audio summary will always reflect the final state.
-            await sendMarkdownReply(ctx, `[claude-code] ${state.text}`).catch((err) => {
+            // Stream each text block to chat immediately as it arrives
+            await sendMarkdownReply(ctx, `\`[claude-code]\` ${state.text}`).catch((err) => {
               log({ chatId, message: `stream text error: ${err instanceof Error ? err.message : String(err)}` });
             });
             log({ chatId, direction: "out", message: `[stream] ${state.text.slice(0, 80)}` });
-
-            // Accumulate all blocks so the final narration has full context
             allBlocks.push(state.text);
-            if (responseTimer) clearTimeout(responseTimer);
-            responseTimer = setTimeout(async () => {
-              try {
-                const summary = await narrate(allBlocks.join("\n\n"), polished);
-                const audio = await synthesizeSpeech(summary);
-                await ctx.replyWithVoice(new InputFile(audio, "reply.mp3"));
-                log({ chatId, direction: "out", message: `[voice response] ${summary.slice(0, 80)}` });
-              } catch (err) {
-                log({ chatId, message: `Voice response error: ${err instanceof Error ? err.message : String(err)}` });
-              }
-            }, 3000);
           };
 
-          await startInjectionWatcher(attached, chatId, () => clearInterval(typingInterval), voiceResponseHandler);
+          const voiceCompleteHandler = () => {
+            if (allBlocks.length === 0) return;
+            narrate(allBlocks.join("\n\n"), polished)
+              .then((summary) => synthesizeSpeech(summary).then((audio) => {
+                ctx.replyWithVoice(new InputFile(audio, "reply.mp3"));
+                log({ chatId, direction: "out", message: `[voice response] ${summary.slice(0, 80)}` });
+              }))
+              .catch((err) => {
+                log({ chatId, message: `Voice response error: ${err instanceof Error ? err.message : String(err)}` });
+              });
+          };
+
+          await startInjectionWatcher(attached, chatId, () => clearInterval(typingInterval), voiceResponseHandler, voiceCompleteHandler);
         } else {
           clearInterval(typingInterval);
         }

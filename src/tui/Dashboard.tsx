@@ -7,6 +7,7 @@ import { LogPane } from "./LogPane.js";
 import { SessionPane } from "./SessionPane.js";
 import { createBot } from "../telegram/bot.js";
 import { clearLogs } from "../logger.js";
+import { sendStartupMessage } from "../telegram/notifications.js";
 
 type Status = "running" | "stopped";
 type Props = { token: string };
@@ -21,7 +22,10 @@ export function Dashboard({ token }: Props) {
     const bot = createBot(token);
     bot.catch(() => setStatus("stopped"));
     botRef.current = bot;
-    bot.start({ onStart: () => setStatus("running") }).catch(() => setStatus("stopped"));
+    bot.start({ onStart: () => {
+      setStatus("running");
+      sendStartupMessage(bot).catch(() => {});
+    }}).catch(() => setStatus("stopped"));
   }
 
   async function stop() {

@@ -1,6 +1,6 @@
 import { createBot } from "./telegram/bot.js";
 import { startMonitor } from "./session/monitor.js";
-import { notifyWaiting } from "./telegram/notifications.js";
+import { notifyWaiting, sendStartupMessage } from "./telegram/notifications.js";
 import { existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -34,4 +34,9 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-await bot.start({ onStart: () => console.log("claude-voice bot running") });
+await bot.start({
+  onStart: () => {
+    console.log("claude-voice bot running");
+    sendStartupMessage(bot).catch(() => {});
+  },
+});

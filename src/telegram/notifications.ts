@@ -2,6 +2,12 @@ import { Bot, InlineKeyboard } from "grammy";
 import { WaitingType, type SessionWaitingState, type SessionResponseState } from "../session/monitor.js";
 import { getAttachedSession } from "../session/history.js";
 import { log } from "../logger.js";
+import { writeFile, readFile, mkdir } from "fs/promises";
+import { homedir } from "os";
+import { join } from "path";
+
+const CLAUDE_VOICE_DIR = join(homedir(), ".claude-voice");
+const CHAT_ID_PATH = join(CLAUDE_VOICE_DIR, "chat-id");
 
 let registeredBot: Bot | null = null;
 let registeredChatId: number | null = null;
@@ -38,6 +44,21 @@ export async function sendPing(text: string): Promise<void> {
 export function registerForNotifications(bot: Bot, chatId: number): void {
   registeredBot = bot;
   registeredChatId = chatId;
+  mkdir(CLAUDE_VOICE_DIR, { recursive: true })
+    .then(() => writeFile(CHAT_ID_PATH, String(chatId), "utf8"))
+    .catch(() => {});
+}
+
+export async function sendStartupMessage(bot: Bot): Promise<void> {
+  let chatId: number;
+  try {
+    const raw = await readFile(CHAT_ID_PATH, "utf8");
+    chatId = parseInt(raw.trim(), 10);
+    if (!Number.isFinite(chatId)) return;
+  } catch {
+    return; // no saved chat ID yet
+  }
+  await bot.api.sendMessage(chatId, "claude-voice started.").catch(() => {});
 }
 
 function buildWaitingKeyboard(waitingType: WaitingType): InlineKeyboard {

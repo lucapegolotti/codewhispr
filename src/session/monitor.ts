@@ -166,7 +166,8 @@ export function watchForResponse(
   onResponse: ResponseCallback,
   timeoutMs = 120_000,
   onPing?: () => void,
-  debounceMs = 1000
+  debounceMs = 1000,
+  onComplete?: () => void
 ): () => void {
   const parts = filePath.split("/");
   const sessionId = parts[parts.length - 1].replace(".jsonl", "");
@@ -175,6 +176,7 @@ export function watchForResponse(
   const cwd = parts.slice(0, -2).join("/"); // approximation; real cwd read from file
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
   let done = false;
   let lastSentText: string | null = null;
   let completionScheduled = false;
@@ -187,6 +189,7 @@ export function watchForResponse(
 
   const cleanup = () => {
     if (debounceTimer) clearTimeout(debounceTimer);
+    if (silenceTimer) clearTimeout(silenceTimer);
     clearTimeout(pingId);
     watcher.close();
   };
@@ -245,11 +248,13 @@ export function watchForResponse(
         if (isComplete && !completionScheduled) {
           completionScheduled = true;
           clearTimeout(timeoutId);
+          if (silenceTimer) clearTimeout(silenceTimer);
           // Let any pending debounce fire first, then shut down
           setTimeout(() => {
             done = true;
             cleanup();
             log({ message: `watchForResponse: session ${sessionId.slice(0, 8)} completed (result event)` });
+            onComplete?.();
           }, debounceMs + 200);
         }
 
@@ -269,6 +274,20 @@ export function watchForResponse(
           await onResponse({ sessionId, projectName, cwd: capturedCwd, filePath, text: capturedText }).catch(
             (err) => log({ message: `watchForResponse callback error: ${err instanceof Error ? err.message : String(err)}` })
           );
+          // Silence timer: if no new text arrives within 10s, treat as turn complete
+          if (onComplete && !completionScheduled) {
+            if (silenceTimer) clearTimeout(silenceTimer);
+            silenceTimer = setTimeout(() => {
+              if (!done && !completionScheduled) {
+                completionScheduled = true;
+                done = true;
+                clearTimeout(timeoutId);
+                cleanup();
+                log({ message: `watchForResponse: session ${sessionId.slice(0, 8)} completed (silence)` });
+                onComplete();
+              }
+            }, 10_000);
+          }
         }, debounceMs);
       })
       .catch(() => {
