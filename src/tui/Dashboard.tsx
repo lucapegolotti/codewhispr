@@ -85,37 +85,28 @@ export function Dashboard({ token: _token }: Props) {
     }
   });
 
+  const hooksMissing = hookStatus === "missing" || permHookStatus === "missing";
+  const hooksInstalling = hookStatus === "installing" || permHookStatus === "installing";
+  const hooksInstalled = hookStatus === "installed" && permHookStatus === "installed";
+
   return (
     <Box flexDirection="column" height="100%">
       <StatusBar status={status} />
-      {hookStatus === "missing" && (
+      {hooksInstalling && (
+        <Box paddingX={1}>
+          <Text color="yellow">Installing hooks…</Text>
+        </Box>
+      )}
+      {hooksMissing && !hooksInstalling && (
         <Box paddingX={1} backgroundColor="yellow">
-          <Text color="black">⚠ Claude Code stop hook not installed — voice narration will be delayed.  [i] install</Text>
+          <Text color="black">
+            {`⚠ Missing: ${[hookStatus === "missing" ? "stop" : "", permHookStatus === "missing" ? "permission" : ""].filter(Boolean).join(", ")} hook${hookStatus === "missing" && permHookStatus === "missing" ? "s" : ""} — [i] install`}
+          </Text>
         </Box>
       )}
-      {hookStatus === "installing" && (
+      {hooksInstalled && (
         <Box paddingX={1}>
-          <Text color="yellow">Installing Claude Code stop hook…</Text>
-        </Box>
-      )}
-      {hookStatus === "installed" && (
-        <Box paddingX={1}>
-          <Text color="green">✓ Claude Code stop hook installed</Text>
-        </Box>
-      )}
-      {permHookStatus === "missing" && (
-        <Box paddingX={1} backgroundColor="yellow">
-          <Text color="black">⚠ Permission approval hook not installed — [i] install</Text>
-        </Box>
-      )}
-      {permHookStatus === "installing" && (
-        <Box paddingX={1}>
-          <Text color="yellow">Installing permission approval hook…</Text>
-        </Box>
-      )}
-      {permHookStatus === "installed" && (
-        <Box paddingX={1}>
-          <Text color="green">✓ Permission approval hook installed</Text>
+          <Text color="green">✓ All hooks installed</Text>
         </Box>
       )}
       <Box flexGrow={1} borderStyle="single">
@@ -124,7 +115,7 @@ export function Dashboard({ token: _token }: Props) {
           <SessionPane />
         </Box>
       </Box>
-      <KeyBar status={status} hookStatus={hookStatus === "missing" || permHookStatus === "missing" ? "missing" : hookStatus} />
+      <KeyBar status={status} hookStatus={hooksMissing ? "missing" : hooksInstalled ? "installed" : "unknown"} />
     </Box>
   );
 }
