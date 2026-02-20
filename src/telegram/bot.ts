@@ -193,7 +193,7 @@ export function createBot(token: string): Bot {
 
       if (reply === "__INJECTED__") {
         if (polished) {
-          await ctx.reply(`\`[transcription]\` ${polished}`);
+          await ctx.reply(`[transcription] ${polished}`);
           log({ chatId, direction: "out", message: `[transcription] ${polished.slice(0, 80)}` });
         }
         await ctx.replyWithChatAction("typing");
@@ -202,24 +202,24 @@ export function createBot(token: string): Bot {
         }, 4000);
 
         if (attached) {
-          let lastText = "";
+          const allBlocks: string[] = [];
           let responseTimer: ReturnType<typeof setTimeout> | null = null;
 
           const voiceResponseHandler = async (state: SessionResponseState) => {
             // Text blocks are streamed as they arrive. If two blocks arrive in rapid
             // succession, Telegram delivery order is non-deterministic — acceptable here
             // since the audio summary will always reflect the final state.
-            await sendMarkdownReply(ctx, `\`[claude-code]\` ${state.text}`).catch((err) => {
+            await sendMarkdownReply(ctx, `[claude-code] ${state.text}`).catch((err) => {
               log({ chatId, message: `stream text error: ${err instanceof Error ? err.message : String(err)}` });
             });
             log({ chatId, direction: "out", message: `[stream] ${state.text.slice(0, 80)}` });
 
-            // Debounce for final audio summary
-            lastText = state.text;
+            // Accumulate all blocks so the final narration has full context
+            allBlocks.push(state.text);
             if (responseTimer) clearTimeout(responseTimer);
             responseTimer = setTimeout(async () => {
               try {
-                const summary = await narrate(lastText, polished);
+                const summary = await narrate(allBlocks.join("\n\n"), polished);
                 const audio = await synthesizeSpeech(summary);
                 await ctx.replyWithVoice(new InputFile(audio, "reply.mp3"));
                 log({ chatId, direction: "out", message: `[voice response] ${summary.slice(0, 80)}` });
