@@ -14,8 +14,8 @@ export type PermissionRequest = {
   filePath: string;
 };
 
-// Read the JSONL transcript and extract the last tool_use input as a short string.
-async function extractToolCommand(transcriptPath: string): Promise<string | undefined> {
+// Read the JSONL transcript and extract the last tool_use input matching toolName.
+async function extractToolCommand(transcriptPath: string, toolName: string): Promise<string | undefined> {
   try {
     const content = await readFile(transcriptPath, "utf8");
     const lines = content.trim().split("\n").filter(Boolean);
@@ -26,11 +26,10 @@ async function extractToolCommand(transcriptPath: string): Promise<string | unde
         const blocks: unknown[] = obj.message?.content ?? [];
         for (let j = blocks.length - 1; j >= 0; j--) {
           const block = blocks[j] as Record<string, unknown>;
-          if (block.type !== "tool_use") continue;
+          if (block.type !== "tool_use" || block.name !== toolName) continue;
           const input = block.input;
           if (typeof input === "string") return input.slice(0, 300);
           if (input && typeof input === "object") {
-            // For Bash: show "command", for others show JSON
             const cmd = (input as Record<string, unknown>).command;
             if (typeof cmd === "string") return cmd.slice(0, 300);
             return JSON.stringify(input).slice(0, 300);
@@ -64,7 +63,7 @@ export function watchPermissionRequests(
       .then(async (raw) => {
         const data = JSON.parse(raw);
         const toolCommand = data.transcriptPath
-          ? await extractToolCommand(data.transcriptPath)
+          ? await extractToolCommand(data.transcriptPath, data.toolName)
           : undefined;
         const req: PermissionRequest = {
           requestId: data.requestId,
