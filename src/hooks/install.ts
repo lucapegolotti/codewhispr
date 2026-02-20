@@ -25,6 +25,111 @@ fi
 exit 0
 `;
 
+const PERMISSION_HOOK_SCRIPT_PATH = join(homedir(), ".claude", "hooks", "claude-voice-permission.sh");
+
+const PERMISSION_HOOK_SCRIPT = `#!/bin/bash
+# Forwards Claude Code permission requests to the claude-voice Telegram bot.
+# Waits for the user to approve or deny via Telegram, then exits accordingly.
+
+CLAUDE_VOICE_DIR="$HOME/.claude-voice"
+mkdir -p "$CLAUDE_VOICE_DIR"
+
+INPUT=$(cat)
+
+TOOL_NAME=$(echo "$INPUT" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(d.get('tool_name', d.get('tool', 'unknown')))
+" 2>/dev/null || echo "unknown")
+
+TOOL_INPUT=$(echo "$INPUT" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+ti = d.get('tool_input', d.get('input', {}))
+print(json.dumps(ti) if not isinstance(ti, str) else ti)
+" 2>/dev/null || echo "{}")
+
+REQUEST_ID=$(python3 -c "import uuid; print(str(uuid.uuid4()))")
+REQUEST_FILE="$CLAUDE_VOICE_DIR/permission-request-\${REQUEST_ID}.json"
+RESPONSE_FILE="$CLAUDE_VOICE_DIR/permission-response-\${REQUEST_ID}"
+
+python3 -c "
+import json, sys
+data = {
+    'requestId': sys.argv[1],
+    'toolName': sys.argv[2],
+    'toolInput': sys.argv[3],
+}
+print(json.dumps(data))
+" "$REQUEST_ID" "$TOOL_NAME" "$TOOL_INPUT" > "$REQUEST_FILE"
+
+TIMEOUT=300
+ELAPSED=0
+while [ $ELAPSED -lt $TIMEOUT ]; do
+  if [ -f "$RESPONSE_FILE" ]; then
+    RESPONSE=$(cat "$RESPONSE_FILE" | tr -d '\\n\\r' | tr '[:upper:]' '[:lower:]')
+    rm -f "$REQUEST_FILE" "$RESPONSE_FILE"
+    [ "$RESPONSE" = "approve" ] && exit 0 || exit 2
+  fi
+  sleep 1
+  ELAPSED=$((ELAPSED + 1))
+done
+
+rm -f "$REQUEST_FILE"
+exit 0
+`;
+
+export async function isPermissionHookInstalled(): Promise<boolean> {
+  try {
+    const raw = await readFile(CLAUDE_SETTINGS_PATH, "utf8");
+    const settings = JSON.parse(raw);
+    const notifGroups: { hooks?: { command?: string }[] }[] = settings?.hooks?.Notification ?? [];
+    return notifGroups.some((group) =>
+      group.hooks?.some((h) => h.command?.includes("claude-voice-permission"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function installPermissionHook(): Promise<void> {
+  await mkdir(dirname(PERMISSION_HOOK_SCRIPT_PATH), { recursive: true });
+  await writeFile(PERMISSION_HOOK_SCRIPT_PATH, PERMISSION_HOOK_SCRIPT, { mode: 0o755 });
+
+  let settings: Record<string, unknown> = {};
+  try {
+    settings = JSON.parse(await readFile(CLAUDE_SETTINGS_PATH, "utf8"));
+  } catch {
+    // File may not exist yet
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+  const hooks = settings.hooks as Record<string, unknown[]>;
+  if (!hooks.Notification) hooks.Notification = [];
+
+  type NotifGroup = { matcher?: string; hooks: { type: string; command: string }[] };
+  const notifGroups = hooks.Notification as NotifGroup[];
+
+  const alreadyInstalled = notifGroups.some((g) =>
+    g.hooks?.some((h) => h.command?.includes("claude-voice-permission"))
+  );
+
+  if (!alreadyInstalled) {
+    const permGroup = notifGroups.find((g) => g.matcher === "permission_prompt");
+    if (permGroup) {
+      permGroup.hooks.push({ type: "command", command: PERMISSION_HOOK_SCRIPT_PATH });
+    } else {
+      notifGroups.push({
+        matcher: "permission_prompt",
+        hooks: [{ type: "command", command: PERMISSION_HOOK_SCRIPT_PATH }],
+      });
+    }
+  }
+
+  await mkdir(dirname(CLAUDE_SETTINGS_PATH), { recursive: true });
+  await writeFile(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", "utf8");
+}
+
 export async function isHookInstalled(): Promise<boolean> {
   try {
     const raw = await readFile(CLAUDE_SETTINGS_PATH, "utf8");

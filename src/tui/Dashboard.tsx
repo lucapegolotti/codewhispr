@@ -1,60 +1,86 @@
 import { Box, Text, useApp, useInput } from "ink";
 import { useState, useEffect, useRef } from "react";
-import type { Bot } from "grammy";
+import { execFile } from "child_process";
+import { homedir } from "os";
 import { StatusBar } from "./StatusBar.js";
 import { KeyBar } from "./KeyBar.js";
 import { LogPane } from "./LogPane.js";
 import { SessionPane } from "./SessionPane.js";
-import { createBot } from "../telegram/bot.js";
-import { clearLogs } from "../logger.js";
-import { sendStartupMessage } from "../telegram/notifications.js";
-import { isHookInstalled, installHook } from "../hooks/install.js";
+import { isHookInstalled, installHook, isPermissionHookInstalled, installPermissionHook } from "../hooks/install.js";
+
+const PLIST_PATH = `${homedir()}/Library/LaunchAgents/com.claude-voice.bot.plist`;
+const SERVICE_LABEL = "com.claude-voice.bot";
 
 type Status = "running" | "stopped";
 type HookStatus = "unknown" | "installed" | "missing" | "installing";
+
+function launchctl(...args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("launchctl", args, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr || err.message));
+      else resolve(stdout);
+    });
+  });
+}
+
+async function getServiceStatus(): Promise<Status> {
+  try {
+    const out = await launchctl("list", SERVICE_LABEL);
+    return out.includes('"PID"') ? "running" : "stopped";
+  } catch {
+    return "stopped";
+  }
+}
+
 type Props = { token: string };
 
-export function Dashboard({ token }: Props) {
+export function Dashboard({ token: _token }: Props) {
   const { exit } = useApp();
   const [status, setStatus] = useState<Status>("stopped");
   const [hookStatus, setHookStatus] = useState<HookStatus>("unknown");
-  const botRef = useRef<Bot | null>(null);
+  const [permHookStatus, setPermHookStatus] = useState<HookStatus>("unknown");
+  const [clearCount, setClearCount] = useState(0);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function start() {
-    if (botRef.current) return;
-    const bot = createBot(token);
-    bot.catch(() => setStatus("stopped"));
-    botRef.current = bot;
-    bot.start({ onStart: () => {
-      setStatus("running");
-      sendStartupMessage(bot).catch(() => {});
-    }}).catch(() => setStatus("stopped"));
-  }
-
-  async function stop() {
-    if (!botRef.current) return;
-    await botRef.current.stop();
-    botRef.current = null;
-    setStatus("stopped");
+  function startPolling() {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      setStatus(await getServiceStatus());
+    }, 2000);
   }
 
   useEffect(() => {
-    start();
+    getServiceStatus().then(setStatus);
     isHookInstalled().then((installed) => setHookStatus(installed ? "installed" : "missing"));
-    return () => { stop(); };
+    isPermissionHookInstalled().then((installed) => setPermHookStatus(installed ? "installed" : "missing"));
+    startPolling();
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, []);
 
   useInput((input) => {
-    if (input === "q") stop().then(() => exit()).catch(() => exit());
-    if (input === "s" && status === "stopped") start();
-    if (input === "x" && status === "running") stop();
-    if (input === "r") stop().then(() => start()).catch(() => {});
-    if (input === "c") clearLogs();
-    if (input === "i" && hookStatus === "missing") {
-      setHookStatus("installing");
-      installHook()
-        .then(() => setHookStatus("installed"))
-        .catch(() => setHookStatus("missing"));
+    if (input === "q") exit();
+    if (input === "s" && status === "stopped") {
+      launchctl("load", PLIST_PATH).then(() => getServiceStatus().then(setStatus)).catch(() => {});
+    }
+    if (input === "x" && status === "running") {
+      launchctl("unload", PLIST_PATH).then(() => setStatus("stopped")).catch(() => {});
+    }
+    if (input === "r") {
+      const uid = process.getuid ? process.getuid() : 501;
+      launchctl("kickstart", "-k", `gui/${uid}/${SERVICE_LABEL}`)
+        .then(() => getServiceStatus().then(setStatus))
+        .catch(() => {});
+    }
+    if (input === "c") setClearCount((n) => n + 1);
+    if (input === "i" && (hookStatus === "missing" || permHookStatus === "missing")) {
+      if (hookStatus === "missing") {
+        setHookStatus("installing");
+        installHook().then(() => setHookStatus("installed")).catch(() => setHookStatus("missing"));
+      }
+      if (permHookStatus === "missing") {
+        setPermHookStatus("installing");
+        installPermissionHook().then(() => setPermHookStatus("installed")).catch(() => setPermHookStatus("missing"));
+      }
     }
   });
 
@@ -76,13 +102,28 @@ export function Dashboard({ token }: Props) {
           <Text color="green">✓ Claude Code stop hook installed</Text>
         </Box>
       )}
+      {permHookStatus === "missing" && (
+        <Box paddingX={1} backgroundColor="yellow">
+          <Text color="black">⚠ Permission approval hook not installed — [i] install</Text>
+        </Box>
+      )}
+      {permHookStatus === "installing" && (
+        <Box paddingX={1}>
+          <Text color="yellow">Installing permission approval hook…</Text>
+        </Box>
+      )}
+      {permHookStatus === "installed" && (
+        <Box paddingX={1}>
+          <Text color="green">✓ Permission approval hook installed</Text>
+        </Box>
+      )}
       <Box flexGrow={1} borderStyle="single">
-        <LogPane />
+        <LogPane clearCount={clearCount} />
         <Box borderStyle="single" width={24}>
           <SessionPane />
         </Box>
       </Box>
-      <KeyBar status={status} hookStatus={hookStatus} />
+      <KeyBar status={status} hookStatus={hookStatus === "missing" || permHookStatus === "missing" ? "missing" : hookStatus} />
     </Box>
   );
 }

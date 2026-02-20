@@ -4,11 +4,12 @@ import { transcribeAudio, synthesizeSpeech, polishTranscript } from "../voice.js
 import { narrate } from "../narrator.js";
 import type { SessionResponseState } from "../session/monitor.js";
 import { log } from "../logger.js";
-import { listSessions, ATTACHED_SESSION_PATH, getAttachedSession, getSessionFilePath } from "../session/history.js";
+import { listSessions, ATTACHED_SESSION_PATH, getAttachedSession, getLatestSessionFileForCwd } from "../session/history.js";
 import { registerForNotifications, resolveWaitingAction, notifyResponse, sendPing } from "./notifications.js";
 import { injectInput } from "../session/tmux.js";
 import { clearAdapterSession } from "../session/adapter.js";
 import { watchForResponse, getFileSize } from "../session/monitor.js";
+import { respondToPermission } from "../session/permissions.js";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import { homedir } from "os";
 
@@ -107,14 +108,21 @@ async function startInjectionWatcher(
     activeWatcherOnComplete = null;
   }
 
-  const filePath = await getSessionFilePath(attached.sessionId);
-  if (!filePath) {
-    log({ message: `watchForResponse: could not find JSONL for session ${attached.sessionId.slice(0, 8)}` });
+  const latest = await getLatestSessionFileForCwd(attached.cwd);
+  if (!latest) {
+    log({ message: `watchForResponse: could not find JSONL for cwd ${attached.cwd}` });
     onComplete?.();
     return;
   }
+  const { filePath, sessionId: latestSessionId } = latest;
+  // If Claude Code restarted and created a new session, update the attached record
+  // so notifyResponse (which checks sessionId match) sends to the right session.
+  if (latestSessionId !== attached.sessionId) {
+    log({ message: `watchForResponse: session rotated ${attached.sessionId.slice(0, 8)} → ${latestSessionId.slice(0, 8)}, updating attached` });
+    await writeFile(ATTACHED_SESSION_PATH, `${latestSessionId}\n${attached.cwd}`, "utf8").catch(() => {});
+  }
   const baseline = await getFileSize(filePath);
-  log({ message: `watchForResponse started for ${attached.sessionId.slice(0, 8)}, baseline=${baseline}` });
+  log({ message: `watchForResponse started for ${latestSessionId.slice(0, 8)}, baseline=${baseline}` });
   activeWatcherOnComplete = onComplete ?? null;
   activeWatcherStop = watchForResponse(
     filePath,
@@ -213,7 +221,7 @@ export function createBot(token: string): Bot {
 
           const voiceResponseHandler = async (state: SessionResponseState) => {
             // Stream each text block to chat immediately as it arrives
-            await sendMarkdownReply(ctx, `\`[claude-code]\` ${state.text}`).catch((err) => {
+            await sendMarkdownReply(ctx, `\`[claude-code][${state.projectName}]\` ${state.text}`).catch((err) => {
               log({ chatId, message: `stream text error: ${err instanceof Error ? err.message : String(err)}` });
             });
             log({ chatId, direction: "out", message: `[stream] ${state.text.slice(0, 80)}` });
@@ -315,6 +323,21 @@ export function createBot(token: string): Bot {
           await ctx.answerCallbackQuery({ text: "No attached session." });
         }
       }
+      return;
+    }
+
+    if (data.startsWith("perm:")) {
+      const parts = data.split(":");
+      const action = parts[1];
+      const requestId = parts.slice(2).join(":");
+      if (!requestId || (action !== "approve" && action !== "deny")) {
+        await ctx.answerCallbackQuery({ text: "Invalid permission request." });
+        return;
+      }
+      await respondToPermission(requestId, action === "approve").catch((err) => {
+        log({ message: `respondToPermission error: ${err instanceof Error ? err.message : String(err)}` });
+      });
+      await ctx.answerCallbackQuery({ text: action === "approve" ? "Approved ✅" : "Denied ❌" });
       return;
     }
 

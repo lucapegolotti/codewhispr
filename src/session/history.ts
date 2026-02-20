@@ -176,3 +176,42 @@ export async function getSessionFilePath(sessionId: string): Promise<string | nu
   }
   return null;
 }
+
+// Returns the most recently modified session JSONL for the given working directory.
+// Used when the attached session ID may be stale (e.g. Claude Code restarted and
+// created a new session UUID while the bot was still watching the old one).
+export async function getLatestSessionFileForCwd(
+  cwd: string
+): Promise<{ filePath: string; sessionId: string } | null> {
+  // Claude Code encodes the cwd as a directory name by replacing "/" with "-".
+  // e.g. /Users/luca/repositories/foo → -Users-luca-repositories-foo
+  const dirName = cwd.replace(/\//g, "-");
+  const projectDir = `${PROJECTS_PATH}/${dirName}`;
+
+  let files: string[];
+  try {
+    files = (await readdir(projectDir)).filter((f) => f.endsWith(".jsonl"));
+  } catch {
+    return null;
+  }
+
+  let bestFile: string | null = null;
+  let bestMtime = new Date(0);
+  for (const file of files) {
+    try {
+      const m = (await stat(`${projectDir}/${file}`)).mtime;
+      if (m > bestMtime) {
+        bestMtime = m;
+        bestFile = file;
+      }
+    } catch {
+      continue;
+    }
+  }
+  if (!bestFile) return null;
+
+  return {
+    filePath: `${projectDir}/${bestFile}`,
+    sessionId: bestFile.replace(".jsonl", ""),
+  };
+}

@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { WaitingType, type SessionWaitingState, type SessionResponseState } from "../session/monitor.js";
+import type { PermissionRequest } from "../session/permissions.js";
 import { getAttachedSession } from "../session/history.js";
 import { log } from "../logger.js";
 import { writeFile, readFile, mkdir } from "fs/promises";
@@ -97,12 +98,40 @@ export async function notifyResponse(state: SessionResponseState): Promise<void>
   const attached = await getAttachedSession().catch(() => null);
   if (!attached || attached.sessionId !== state.sessionId) return;
 
-  const text = `\`[claude-code]\` ${state.text}`;
+  const text = `\`[claude-code][${state.projectName}]\` ${state.text}`;
   try {
     await sendMarkdownMessage(registeredBot, registeredChatId, text);
     log({ chatId: registeredChatId, message: `notified response: ${state.projectName} (${state.text.slice(0, 60)})` });
   } catch (err) {
     log({ message: `failed to send response notification: ${err instanceof Error ? err.message : String(err)}` });
+  }
+}
+
+export async function notifyPermission(req: PermissionRequest): Promise<void> {
+  if (!registeredBot || !registeredChatId) return;
+
+  const toolInputPreview = req.toolInput.slice(0, 300);
+  const text = `🔐 *Permission required*\n\`${req.toolName}\`\n\n\`${toolInputPreview}\``;
+  const keyboard = new InlineKeyboard()
+    .text("✅ Approve", `perm:approve:${req.requestId}`)
+    .text("❌ Deny", `perm:deny:${req.requestId}`);
+
+  try {
+    await registeredBot.api.sendMessage(registeredChatId, text, {
+      parse_mode: "Markdown",
+      reply_markup: keyboard,
+    });
+    log({ chatId: registeredChatId, message: `permission notification: ${req.toolName} (${req.requestId.slice(0, 8)})` });
+  } catch {
+    try {
+      await registeredBot.api.sendMessage(
+        registeredChatId,
+        `Permission required: ${req.toolName}\n\n${toolInputPreview}`,
+        { reply_markup: keyboard }
+      );
+    } catch (err) {
+      log({ message: `failed to send permission notification: ${err instanceof Error ? err.message : String(err)}` });
+    }
   }
 }
 

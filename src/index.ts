@@ -1,6 +1,7 @@
 import { createBot } from "./telegram/bot.js";
 import { startMonitor } from "./session/monitor.js";
-import { notifyWaiting, sendStartupMessage } from "./telegram/notifications.js";
+import { watchPermissionRequests } from "./session/permissions.js";
+import { notifyWaiting, sendStartupMessage, notifyPermission } from "./telegram/notifications.js";
 import { existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -24,13 +25,18 @@ bot.catch(console.error);
 // Start session monitor — watches all Claude JSONL files for waiting state
 const stopMonitor = startMonitor(notifyWaiting);
 
+// Start permission request watcher
+const stopPermissionWatcher = watchPermissionRequests(notifyPermission);
+
 // Graceful shutdown
 process.on("SIGINT", () => {
   stopMonitor();
+  stopPermissionWatcher();
   process.exit(0);
 });
 process.on("SIGTERM", () => {
   stopMonitor();
+  stopPermissionWatcher();
   process.exit(0);
 });
 

@@ -6,9 +6,9 @@ export function KeyBar({ status, hookStatus }: Props) {
   return (
     <Box paddingX={1} gap={3}>
       {status === "stopped" ? (
-        <Text>[s] start</Text>
+        <Text>[s] start service</Text>
       ) : (
-        <Text>[x] stop</Text>
+        <Text>[x] stop service</Text>
       )}
       <Text>[r] restart</Text>
       <Text>[c] clear logs</Text>
