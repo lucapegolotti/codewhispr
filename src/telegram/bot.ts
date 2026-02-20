@@ -270,7 +270,7 @@ export function createBot(token: string): Bot {
 
           const voiceResponseHandler = async (state: SessionResponseState) => {
             // Stream each text block to chat immediately as it arrives
-            await sendMarkdownReply(ctx, `\`[claude-code][${state.projectName}]\` ${state.text}`).catch((err) => {
+            await sendMarkdownReply(ctx, `\`[claude-code][${state.projectName}]\` ${state.text.replaceAll(";", ".")}`).catch((err) => {
               log({ chatId, message: `stream text error: ${err instanceof Error ? err.message : String(err)}` });
             });
             log({ chatId, direction: "out", message: `[stream] ${state.text.slice(0, 80)}` });
