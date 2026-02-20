@@ -192,7 +192,9 @@ export function createBot(token: string): Bot {
       }
 
       if (reply === "__INJECTED__") {
-        await ctx.reply(`\`[transcription]\` ${polished}`);
+        if (polished) {
+          await ctx.reply(`\`[transcription]\` ${polished}`);
+        }
         await ctx.replyWithChatAction("typing");
         const typingInterval = setInterval(() => {
           ctx.replyWithChatAction("typing").catch(() => {});
@@ -203,7 +205,9 @@ export function createBot(token: string): Bot {
           let responseTimer: ReturnType<typeof setTimeout> | null = null;
 
           const voiceResponseHandler = async (state: SessionResponseState) => {
-            // Stream text block immediately
+            // Text blocks are streamed as they arrive. If two blocks arrive in rapid
+            // succession, Telegram delivery order is non-deterministic — acceptable here
+            // since the audio summary will always reflect the final state.
             await sendMarkdownReply(ctx, `\`[claude-code]\` ${state.text}`).catch(() => {});
 
             // Debounce for final audio summary
