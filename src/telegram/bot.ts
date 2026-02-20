@@ -93,7 +93,6 @@ let activeWatcherStop: (() => void) | null = null;
 async function startInjectionWatcher(
   attached: { sessionId: string; cwd: string },
   chatId: number,
-  onDone?: () => void,
   onResponse?: (state: SessionResponseState) => Promise<void>,
   onComplete?: () => void
 ): Promise<void> {
@@ -106,7 +105,7 @@ async function startInjectionWatcher(
   const filePath = await getSessionFilePath(attached.sessionId);
   if (!filePath) {
     log({ message: `watchForResponse: could not find JSONL for session ${attached.sessionId.slice(0, 8)}` });
-    onDone?.();
+    onComplete?.();
     return;
   }
   const baseline = await getFileSize(filePath);
@@ -114,10 +113,7 @@ async function startInjectionWatcher(
   activeWatcherStop = watchForResponse(
     filePath,
     baseline,
-    async (state) => {
-      onDone?.();
-      await (onResponse ?? notifyResponse)(state);
-    },
+    async (state) => { await (onResponse ?? notifyResponse)(state); },
     3_600_000,
     () => sendPing("⏳ Still working..."),
     1000,
@@ -140,7 +136,7 @@ async function processTextTurn(ctx: Context, chatId: number, text: string): Prom
       ctx.replyWithChatAction("typing").catch(() => {});
     }, 4000);
     if (attached) {
-      await startInjectionWatcher(attached, chatId, () => clearInterval(typingInterval));
+      await startInjectionWatcher(attached, chatId, undefined, () => clearInterval(typingInterval));
     } else {
       clearInterval(typingInterval);
     }
@@ -217,6 +213,7 @@ export function createBot(token: string): Bot {
           };
 
           const voiceCompleteHandler = () => {
+            clearInterval(typingInterval);
             if (allBlocks.length === 0) return;
             narrate(allBlocks.join("\n\n"), polished)
               .then((summary) => synthesizeSpeech(summary).then((audio) => {
@@ -228,7 +225,7 @@ export function createBot(token: string): Bot {
               });
           };
 
-          await startInjectionWatcher(attached, chatId, () => clearInterval(typingInterval), voiceResponseHandler, voiceCompleteHandler);
+          await startInjectionWatcher(attached, chatId, voiceResponseHandler, voiceCompleteHandler);
         } else {
           clearInterval(typingInterval);
         }
@@ -302,7 +299,7 @@ export function createBot(token: string): Bot {
           if (result.found) {
             await ctx.answerCallbackQuery({ text: "Sent!" });
             await ctx.reply(`Sent "${input || "↩"}". Claude is resuming.`);
-            await startInjectionWatcher(attached, ctx.chat!.id);
+            await startInjectionWatcher(attached, ctx.chat!.id, undefined, undefined);
           } else {
             await ctx.answerCallbackQuery({ text: "Could not find tmux pane." });
           }

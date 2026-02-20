@@ -167,8 +167,7 @@ export function watchForResponse(
   timeoutMs = 120_000,
   onPing?: () => void,
   debounceMs = 1000,
-  onComplete?: () => void,
-  silenceMs = 10_000
+  onComplete?: () => void
 ): () => void {
   const parts = filePath.split("/");
   const sessionId = parts[parts.length - 1].replace(".jsonl", "");
@@ -177,7 +176,6 @@ export function watchForResponse(
   const cwd = parts.slice(0, -2).join("/"); // approximation; real cwd read from file
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
   let done = false;
   let lastSentText: string | null = null;
   let completionScheduled = false;
@@ -190,7 +188,6 @@ export function watchForResponse(
 
   const cleanup = () => {
     if (debounceTimer) clearTimeout(debounceTimer);
-    if (silenceTimer) clearTimeout(silenceTimer);
     clearTimeout(pingId);
     watcher.close();
   };
@@ -209,22 +206,6 @@ export function watchForResponse(
 
   watcher.on("change", () => {
     if (done) return;
-
-    // Any file write (tool calls, results, etc.) means Claude is still active —
-    // reset the silence timer so it only fires when the file is truly quiet.
-    if (silenceTimer && !completionScheduled) {
-      clearTimeout(silenceTimer);
-      silenceTimer = setTimeout(() => {
-        if (!done && !completionScheduled) {
-          completionScheduled = true;
-          done = true;
-          clearTimeout(timeoutId);
-          cleanup();
-          log({ message: `watchForResponse: session ${sessionId.slice(0, 8)} completed (silence)` });
-          onComplete?.();
-        }
-      }, silenceMs);
-    }
 
     readFile(filePath)
       .then((buf) => {
@@ -253,7 +234,7 @@ export function watchForResponse(
           }
         }
 
-        // Detect Claude Code turn completion via the result event
+        // Detect Claude Code turn completion via the result event (written by Stop hook)
         const isComplete = lines.some((line) => {
           try {
             return JSON.parse(line).type === "result";
@@ -265,7 +246,6 @@ export function watchForResponse(
         if (isComplete && !completionScheduled) {
           completionScheduled = true;
           clearTimeout(timeoutId);
-          if (silenceTimer) clearTimeout(silenceTimer);
           // Let any pending debounce fire first, then shut down
           setTimeout(() => {
             done = true;
@@ -286,25 +266,10 @@ export function watchForResponse(
         debounceTimer = setTimeout(async () => {
           if (done || capturedText === lastSentText) return;
           lastSentText = capturedText;
-          // Keep watching — don't set done, don't cleanup
           log({ message: `watchForResponse firing for session ${sessionId.slice(0, 8)}: ${capturedText.slice(0, 60)}` });
           await onResponse({ sessionId, projectName, cwd: capturedCwd, filePath, text: capturedText }).catch(
             (err) => log({ message: `watchForResponse callback error: ${err instanceof Error ? err.message : String(err)}` })
           );
-          // Start silence timer on first text block if not already running.
-          // Subsequent resets happen in the change handler above.
-          if (onComplete && !completionScheduled && !silenceTimer) {
-            silenceTimer = setTimeout(() => {
-              if (!done && !completionScheduled) {
-                completionScheduled = true;
-                done = true;
-                clearTimeout(timeoutId);
-                cleanup();
-                log({ message: `watchForResponse: session ${sessionId.slice(0, 8)} completed (silence)` });
-                onComplete();
-              }
-            }, silenceMs);
-          }
         }, debounceMs);
       })
       .catch(() => {
