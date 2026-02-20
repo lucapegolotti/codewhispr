@@ -360,3 +360,42 @@ describe("launch: callbacks", () => {
     expect(launchClaudeInWindow).toHaveBeenCalledWith("/proj", "myproject", true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// /help command
+// ---------------------------------------------------------------------------
+
+describe("/help command", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("replies with a list including all major commands", async () => {
+    const { bot, apiCalls } = await makeBot();
+    await bot.handleUpdate(commandUpdate("/help") as any);
+    const texts = apiCalls.filter((c) => c.method === "sendMessage").map((c) => c.payload.text as string);
+    expect(texts.length).toBeGreaterThan(0);
+    const combined = texts.join("\n");
+    expect(combined).toMatch(/sessions/i);
+    expect(combined).toMatch(/detach/i);
+    expect(combined).toMatch(/status/i);
+    expect(combined).toMatch(/help/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /restart command
+// ---------------------------------------------------------------------------
+
+describe("/restart command", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("replies with a restarting message", async () => {
+    const { bot, apiCalls } = await makeBot();
+    await bot.handleUpdate(commandUpdate("/restart") as any);
+    const texts = apiCalls.filter((c) => c.method === "sendMessage").map((c) => c.payload.text as string);
+    expect(texts.some((t) => /restart/i.test(t))).toBe(true);
+  });
+});
