@@ -192,17 +192,21 @@ export function createBot(token: string): Bot {
       }
 
       if (reply === "__INJECTED__") {
+        await ctx.reply(`\`[transcription]\` ${polished}`);
         await ctx.replyWithChatAction("typing");
         const typingInterval = setInterval(() => {
           ctx.replyWithChatAction("typing").catch(() => {});
         }, 4000);
 
         if (attached) {
-          // Debounce across all text blocks then narrate + send audio
           let lastText = "";
           let responseTimer: ReturnType<typeof setTimeout> | null = null;
 
           const voiceResponseHandler = async (state: SessionResponseState) => {
+            // Stream text block immediately
+            await sendMarkdownReply(ctx, `\`[claude-code]\` ${state.text}`).catch(() => {});
+
+            // Debounce for final audio summary
             lastText = state.text;
             if (responseTimer) clearTimeout(responseTimer);
             responseTimer = setTimeout(async () => {
@@ -213,7 +217,6 @@ export function createBot(token: string): Bot {
                 log({ chatId, direction: "out", message: `[voice response] ${summary.slice(0, 80)}` });
               } catch (err) {
                 log({ chatId, message: `Voice response error: ${err instanceof Error ? err.message : String(err)}` });
-                await ctx.reply(lastText).catch(() => {});
               }
             }, 3000);
           };
