@@ -34,9 +34,17 @@ export async function sendStartupMessage(bot: Bot): Promise<void> {
     chatId = parseInt(raw.trim(), 10);
     if (!Number.isFinite(chatId)) return;
   } catch {
-    return; // no saved chat ID yet
+    return;
   }
-  await bot.api.sendMessage(chatId, "claude-voice started.").catch(() => {});
+  const attached = await getAttachedSession().catch(() => null);
+  const sessionMsg = attached
+    ? `Attached: \`${attached.sessionId.slice(0, 8)}…\``
+    : "No session attached — use /sessions to pick one.";
+  try {
+    await bot.api.sendMessage(chatId, `claude\\-voice started\\. ${sessionMsg}`, { parse_mode: "MarkdownV2" });
+  } catch {
+    await bot.api.sendMessage(chatId, `claude-voice started. ${attached ? "Attached: " + attached.sessionId.slice(0, 8) : "No session attached."}`).catch(() => {});
+  }
 }
 
 function buildWaitingKeyboard(waitingType: WaitingType): InlineKeyboard {

@@ -125,15 +125,12 @@ export function registerCommands(bot: Bot): void {
     }
     const sessions = await listSessions(20);
     const info = sessions.find((s) => s.sessionId === attached.sessionId);
-    const projectName = info?.projectName ?? "(unknown)";
-    const lines = [
-      `*Attached session*`,
-      `Project: \`${projectName}\``,
-      `Directory: \`${attached.cwd}\``,
-      `Session: \`${attached.sessionId.slice(0, 8)}…\``,
-      `Watcher: ${activeWatcherStop ? "⏳ active" : "✅ idle"}`,
-    ];
-    await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
+    const project = info?.projectName ?? attached.sessionId.slice(0, 8);
+    const watcherState = activeWatcherStop ? "⏳ active" : "✅ idle";
+    await ctx.reply(
+      `\`${project}\` · \`${attached.cwd}\` · watcher: ${watcherState}`,
+      { parse_mode: "Markdown" }
+    );
   });
 
   bot.command("restart", async (ctx) => {

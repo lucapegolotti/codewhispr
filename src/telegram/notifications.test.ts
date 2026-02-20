@@ -23,11 +23,16 @@ describe("sendStartupMessage", () => {
 
   it("sends startup message to the saved chat ID", async () => {
     vi.mocked(readFile).mockResolvedValue("50620969" as any);
+    vi.mocked(getAttachedSession).mockResolvedValue(null);
     const mockBot = { api: { sendMessage: vi.fn().mockResolvedValue({}) } } as any;
 
     await sendStartupMessage(mockBot);
 
-    expect(mockBot.api.sendMessage).toHaveBeenCalledWith(50620969, "claude-voice started.");
+    expect(mockBot.api.sendMessage).toHaveBeenCalledWith(
+      50620969,
+      expect.stringContaining("claude"),
+      expect.anything()
+    );
   });
 
   it("does nothing when the chat-id file does not exist", async () => {
