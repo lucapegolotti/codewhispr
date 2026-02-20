@@ -176,6 +176,10 @@ export function watchForResponse(
   let done = false;
   let lastSentText: string | null = null;
   let completionScheduled = false;
+  // Tracks an in-flight onResponse promise so the complete path can await it
+  // before calling onComplete, preventing a race where two rapid chokidar events
+  // cause onComplete to fire while onResponse is still awaiting the Telegram API.
+  let pendingResponse: Promise<void> = Promise.resolve();
 
   const watcher = chokidar.watch(filePath, {
     persistent: true,
@@ -274,13 +278,18 @@ export function watchForResponse(
           clearTimeout(timeoutId);
           done = true;
           cleanup();
-          // Deliver last text block synchronously before signalling completion
+          // Deliver last text block before signalling completion.
           if (latestText && latestText !== lastSentText) {
             lastSentText = latestText;
             log({ message: `watchForResponse firing for session ${sessionId.slice(0, 8)}: ${latestText.slice(0, 60)}` });
             await onResponse({ sessionId, projectName, cwd: latestCwd, filePath, text: latestText }).catch(
               (err) => log({ message: `watchForResponse callback error: ${err instanceof Error ? err.message : String(err)}` })
             );
+          } else {
+            // Text was already sent by a concurrent change handler that is still
+            // awaiting the Telegram API call — wait for it to finish so that
+            // onComplete (e.g. voice synthesis) sees the populated allBlocks array.
+            await pendingResponse;
           }
           log({ message: `watchForResponse: session ${sessionId.slice(0, 8)} completed (result event)` });
           onComplete?.();
@@ -293,9 +302,10 @@ export function watchForResponse(
         // Fire immediately — no debounce needed since the Stop hook signals completion
         lastSentText = latestText;
         log({ message: `watchForResponse firing for session ${sessionId.slice(0, 8)}: ${latestText.slice(0, 60)}` });
-        await onResponse({ sessionId, projectName, cwd: latestCwd, filePath, text: latestText }).catch(
+        pendingResponse = onResponse({ sessionId, projectName, cwd: latestCwd, filePath, text: latestText }).catch(
           (err) => log({ message: `watchForResponse callback error: ${err instanceof Error ? err.message : String(err)}` })
         );
+        await pendingResponse;
       })
       .catch(() => {
         // file unreadable — keep watching
