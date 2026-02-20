@@ -165,7 +165,8 @@ export function watchForResponse(
   baselineSize: number,
   onResponse: ResponseCallback,
   timeoutMs = 120_000,
-  onPing?: () => void
+  onPing?: () => void,
+  debounceMs = 1000
 ): () => void {
   const parts = filePath.split("/");
   const sessionId = parts[parts.length - 1].replace(".jsonl", "");
@@ -247,7 +248,7 @@ export function watchForResponse(
           await onResponse({ sessionId, projectName, cwd: capturedCwd, filePath, text: capturedText }).catch(
             (err) => log({ message: `watchForResponse callback error: ${err instanceof Error ? err.message : String(err)}` })
           );
-        }, 1000);
+        }, debounceMs);
       })
       .catch(() => {
         // file unreadable — keep watching

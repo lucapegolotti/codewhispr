@@ -6,7 +6,7 @@ import { log } from "../logger.js";
 let registeredBot: Bot | null = null;
 let registeredChatId: number | null = null;
 
-function splitMessage(text: string, limit = 4000): string[] {
+export function splitMessage(text: string, limit = 4000): string[] {
   if (text.length <= limit) return [text];
   const chunks: string[] = [];
   let remaining = text;
