@@ -94,10 +94,10 @@ export async function readSessionLines(filePath: string): Promise<string[]> {
 
 // Returns the most recently modified session per project directory, sorted by
 // recency. One entry per project eliminates duplicates from multi-session projects.
-export async function listSessions(limit = 20): Promise<SessionInfo[]> {
+export async function listSessions(limit = 20, projectsPath = PROJECTS_PATH): Promise<SessionInfo[]> {
   let projectDirs: string[];
   try {
-    projectDirs = await readdir(PROJECTS_PATH);
+    projectDirs = await readdir(projectsPath);
   } catch {
     return [];
   }
@@ -105,7 +105,7 @@ export async function listSessions(limit = 20): Promise<SessionInfo[]> {
   const results: SessionInfo[] = [];
 
   for (const dir of projectDirs) {
-    const dirPath = `${PROJECTS_PATH}/${dir}`;
+    const dirPath = `${projectsPath}/${dir}`;
     let files: string[];
     try {
       files = (await readdir(dirPath)).filter((f) => f.endsWith(".jsonl"));

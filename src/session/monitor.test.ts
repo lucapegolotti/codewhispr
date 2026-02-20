@@ -188,6 +188,31 @@ describe("watchForResponse", () => {
     expect(received).toHaveLength(0);
   });
 
+  it("calls onComplete and flushes last text on timeout when no result event", async () => {
+    tmpFile = join(tmpdir(), `cv-watch-${Date.now()}.jsonl`);
+    await writeFile(tmpFile, "");
+    const baseline = await getFileSize(tmpFile);
+
+    const received: SessionResponseState[] = [];
+    let completed = false;
+    stopWatcher = watchForResponse(
+      tmpFile,
+      baseline,
+      async (state) => { received.push(state); },
+      300, // short timeout — no result event will arrive
+      undefined,
+      () => { completed = true; }
+    );
+
+    await new Promise((r) => setTimeout(r, 100));
+    await appendFile(tmpFile, assistantLine("Final message before timeout."));
+    await new Promise((r) => setTimeout(r, 400)); // let timeout fire
+
+    expect(received).toHaveLength(1);
+    expect(received[0].text).toBe("Final message before timeout.");
+    expect(completed).toBe(true);
+  });
+
   it("calls onComplete after result event", async () => {
     tmpFile = join(tmpdir(), `cv-watch-${Date.now()}.jsonl`);
     await writeFile(tmpFile, "");

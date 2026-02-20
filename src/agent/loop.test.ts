@@ -129,6 +129,49 @@ describe("handleTurn", () => {
   });
 });
 
+describe("sentinel values not stored in chatState", () => {
+  it("does not pass __INJECTED__ as context to the next classifyIntent call", async () => {
+    vi.mocked(classifyIntent).mockResolvedValue(Intent.COMMAND_EXECUTION);
+    vi.mocked(injectInput).mockResolvedValue({ found: true, paneId: "%2" });
+
+    await handleTurn(123, "run tests", undefined, "/cwd"); // returns __INJECTED__
+
+    vi.mocked(classifyIntent).mockResolvedValue(Intent.COMMAND_EXECUTION);
+    vi.mocked(injectInput).mockResolvedValue({ found: true, paneId: "%2" });
+    await handleTurn(123, "run again", undefined, "/cwd");
+
+    const secondCallContext = vi.mocked(classifyIntent).mock.calls[1][1];
+    expect(secondCallContext).toBeUndefined();
+  });
+
+  it("does not pass __SESSION_PICKER__ as context to the next classifyIntent call", async () => {
+    vi.mocked(classifyIntent).mockResolvedValue(Intent.SESSION_LIST);
+    await handleTurn(123, "list sessions"); // returns __SESSION_PICKER__
+
+    vi.mocked(classifyIntent).mockResolvedValue(Intent.COMMAND_EXECUTION);
+    vi.mocked(injectInput).mockResolvedValue({ found: true, paneId: "%2" });
+    await handleTurn(123, "run tests", undefined, "/cwd");
+
+    const secondCallContext = vi.mocked(classifyIntent).mock.calls[1][1];
+    expect(secondCallContext).toBeUndefined();
+  });
+
+  it("stores a real reply as context for the next turn", async () => {
+    vi.mocked(classifyIntent).mockResolvedValue(Intent.COMMAND_EXECUTION);
+    vi.mocked(injectInput).mockResolvedValue({ found: false, reason: "no_claude_pane" });
+    vi.mocked(runAgentTurn).mockResolvedValue("Tests passed.");
+
+    await handleTurn(123, "run tests", undefined, "/cwd");
+
+    vi.mocked(classifyIntent).mockResolvedValue(Intent.FOLLOW_UP_INPUT);
+    vi.mocked(injectInput).mockResolvedValue({ found: true, paneId: "%2" });
+    await handleTurn(123, "y", undefined, "/cwd");
+
+    const secondCallContext = vi.mocked(classifyIntent).mock.calls[1][1];
+    expect(secondCallContext).toContain("Tests passed.");
+  });
+});
+
 describe("clearChatState", () => {
   it("removes stored state so next turn has no prior context", async () => {
     vi.mocked(classifyIntent).mockResolvedValue(Intent.COMMAND_EXECUTION);

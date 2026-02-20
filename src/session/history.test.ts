@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { parseJsonlLines, extractWaitingPrompt } from "./history.js";
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdir, writeFile, rm } from "fs/promises";
+import { join } from "path";
+import { tmpdir } from "os";
+import { parseJsonlLines, extractWaitingPrompt, listSessions } from "./history.js";
 
 const ASSISTANT_LINE = JSON.stringify({
   type: "assistant",
@@ -57,5 +60,70 @@ describe("extractWaitingPrompt", () => {
 
   it("returns null for short non-prompts", () => {
     expect(extractWaitingPrompt("Done.")).toBeNull();
+  });
+});
+
+function assistantJsonl(text: string, cwd = "/tmp/proj"): string {
+  return JSON.stringify({
+    type: "assistant",
+    cwd,
+    message: { content: [{ type: "text", text }] },
+  }) + "\n";
+}
+
+describe("listSessions", () => {
+  let tmpProjects: string;
+
+  afterEach(async () => {
+    await rm(tmpProjects, { recursive: true, force: true });
+  });
+
+  it("returns one session per project directory", async () => {
+    tmpProjects = join(tmpdir(), `cv-projects-${Date.now()}`);
+    await mkdir(join(tmpProjects, "-Users-luca-repos-alpha"), { recursive: true });
+    await mkdir(join(tmpProjects, "-Users-luca-repos-beta"), { recursive: true });
+    await writeFile(join(tmpProjects, "-Users-luca-repos-alpha", "session1.jsonl"), assistantJsonl("Hello from A"));
+    await writeFile(join(tmpProjects, "-Users-luca-repos-beta", "session2.jsonl"), assistantJsonl("Hello from B"));
+
+    const sessions = await listSessions(20, tmpProjects);
+    expect(sessions).toHaveLength(2);
+    expect(sessions.map((s) => s.projectName)).toEqual(expect.arrayContaining(["alpha", "beta"]));
+  });
+
+  it("deduplicates multiple sessions in same project — keeps the newest", async () => {
+    tmpProjects = join(tmpdir(), `cv-projects-${Date.now()}`);
+    const projDir = join(tmpProjects, "-Users-luca-repositories-my-project");
+    await mkdir(projDir, { recursive: true });
+    await writeFile(join(projDir, "old-session.jsonl"), assistantJsonl("old message"));
+    await new Promise((r) => setTimeout(r, 10)); // ensure distinct mtime
+    await writeFile(join(projDir, "new-session.jsonl"), assistantJsonl("new message"));
+
+    const sessions = await listSessions(20, tmpProjects);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].lastMessage).toContain("new message");
+  });
+
+  it("sorts by most recently modified", async () => {
+    tmpProjects = join(tmpdir(), `cv-projects-${Date.now()}`);
+    await mkdir(join(tmpProjects, "-Users-luca-repositories-alpha"), { recursive: true });
+    await mkdir(join(tmpProjects, "-Users-luca-repositories-beta"), { recursive: true });
+    await writeFile(join(tmpProjects, "-Users-luca-repositories-alpha", "s.jsonl"), assistantJsonl("alpha"));
+    await new Promise((r) => setTimeout(r, 10));
+    await writeFile(join(tmpProjects, "-Users-luca-repositories-beta", "s.jsonl"), assistantJsonl("beta"));
+
+    const sessions = await listSessions(20, tmpProjects);
+    expect(sessions[0].projectName).toBe("beta");
+    expect(sessions[1].projectName).toBe("alpha");
+  });
+
+  it("respects the limit", async () => {
+    tmpProjects = join(tmpdir(), `cv-projects-${Date.now()}`);
+    for (const name of ["p1", "p2", "p3"]) {
+      await mkdir(join(tmpProjects, `-Users-luca-${name}`), { recursive: true });
+      await writeFile(join(tmpProjects, `-Users-luca-${name}`, "s.jsonl"), assistantJsonl("msg"));
+    }
+
+    const sessions = await listSessions(2, tmpProjects);
+    expect(sessions).toHaveLength(2);
   });
 });
