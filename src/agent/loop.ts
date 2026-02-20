@@ -44,7 +44,7 @@ export async function handleTurn(
         if (result.found) {
           reply = `__INJECTED__`;
         } else if (result.reason === "ambiguous") {
-          reply = `Multiple Claude sessions found. Please use /sessions to attach to the right one first.`;
+          reply = `No Claude Code running in the attached project. Start Claude Code there, or use /sessions to switch.`;
         } else {
           // No tmux pane found — fall back to agent turn
           reply = agentReply(await runAgentTurn(chatId, userMessage));
@@ -61,7 +61,7 @@ export async function handleTurn(
         if (result.found) {
           reply = `__INJECTED__`;
         } else if (result.reason === "ambiguous") {
-          reply = `Multiple Claude sessions found. Please use /sessions to attach to the right one first.`;
+          reply = `No Claude Code running in the attached project. Start Claude Code there, or use /sessions to switch.`;
         } else {
           reply = agentReply(await runAgentTurn(chatId, userMessage));
         }
@@ -85,7 +85,7 @@ export async function handleTurn(
         if (result.found) {
           reply = `__INJECTED__`;
         } else if (result.reason === "ambiguous") {
-          reply = `Multiple Claude sessions found. Please use /sessions to attach to the right one first.`;
+          reply = `No Claude Code running in the attached project. Start Claude Code there, or use /sessions to switch.`;
         } else {
           // No tmux pane found — fall back to Agent SDK
           reply = agentReply(await runAgentTurn(chatId, userMessage));
