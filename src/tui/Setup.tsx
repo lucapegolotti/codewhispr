@@ -5,6 +5,8 @@ import { writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 import { saveConfig } from "../config/config.js";
+import { SetupHooks } from "./SetupHooks.js";
+import { SetupLaunchd } from "./SetupLaunchd.js";
 
 // API key steps (phase 1) - still require non-empty input
 const API_STEPS = [
@@ -32,7 +34,7 @@ const CONFIG_STEPS = [
 ];
 
 type Props = { envPath: string; onComplete: () => void };
-type Phase = "api" | "config";
+type Phase = "api" | "config" | "hooks" | "launchd";
 
 export function Setup({ envPath, onComplete }: Props) {
   const [phase, setPhase] = useState<Phase>("api");
@@ -83,7 +85,7 @@ export function Setup({ envPath, onComplete }: Props) {
           reposFolder: next.reposFolder || CONFIG_STEPS[0].defaultValue,
           ...(chatId && Number.isFinite(chatId) ? { allowedChatId: chatId } : {}),
         });
-        onComplete();
+        setPhase("hooks");
       } catch (err) {
         setError(`Failed to write config: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -120,6 +122,9 @@ export function Setup({ envPath, onComplete }: Props) {
       </Box>
     );
   }
+
+  if (phase === "hooks") return <SetupHooks onComplete={() => setPhase("launchd")} />;
+  if (phase === "launchd") return <SetupLaunchd onComplete={onComplete} />;
 
   // config phase
   const current = CONFIG_STEPS[configStep];
