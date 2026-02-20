@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdir, writeFile, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { parseJsonlLines, extractWaitingPrompt, listSessions } from "./history.js";
+import { parseJsonlLines, extractWaitingPrompt, listSessions, getLatestSessionFileForCwd, PROJECTS_PATH } from "./history.js";
 
 const ASSISTANT_LINE = JSON.stringify({
   type: "assistant",
@@ -125,5 +125,85 @@ describe("listSessions", () => {
 
     const sessions = await listSessions(2, tmpProjects);
     expect(sessions).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helper: produce a snapshot-only JSONL line (no assistant messages)
+// ---------------------------------------------------------------------------
+function snapshotLine(): string {
+  return JSON.stringify({ type: "file-history-snapshot", messageId: "abc" }) + "\n";
+}
+
+describe("getLatestSessionFileForCwd", () => {
+  // The function uses the module-level PROJECTS_PATH constant (typically
+  // ~/.claude/projects). We create real files under PROJECTS_PATH using unique
+  // test-id-based directory names so tests are isolated and cleaned up after each run.
+
+  let encodedCwd: string;
+  let projectDir: string;
+  let fakeCwd: string;
+
+  afterEach(async () => {
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  function setupProjectDir(testId: string): void {
+    // Use a cwd of form /cv-test-<id> — encodes to -cv-test-<id>
+    // getLatestSessionFileForCwd encodes cwd by replacing "/" with "-"
+    fakeCwd = `/cv-test-${testId}`;
+    encodedCwd = fakeCwd.replace(/\//g, "-");
+    projectDir = join(PROJECTS_PATH, encodedCwd);
+  }
+
+  it("returns the file with assistant messages even when a newer snapshot-only file exists", async () => {
+    setupProjectDir(`assistant-prefers-${Date.now()}`);
+    await mkdir(projectDir, { recursive: true });
+
+    // Write older assistant file
+    await writeFile(join(projectDir, "session-old.jsonl"), assistantJsonl("Hello world"));
+    await new Promise((r) => setTimeout(r, 20)); // ensure distinct mtime
+    // Write newer snapshot-only file
+    await writeFile(join(projectDir, "session-new.jsonl"), snapshotLine());
+
+    const result = await getLatestSessionFileForCwd(fakeCwd);
+    expect(result).not.toBeNull();
+    expect(result!.sessionId).toBe("session-old");
+    expect(result!.filePath).toContain("session-old.jsonl");
+  });
+
+  it("falls back to the most-recently-modified file when no file has assistant messages", async () => {
+    setupProjectDir(`fallback-${Date.now()}`);
+    await mkdir(projectDir, { recursive: true });
+
+    await writeFile(join(projectDir, "session-a.jsonl"), snapshotLine());
+    await new Promise((r) => setTimeout(r, 20));
+    await writeFile(join(projectDir, "session-b.jsonl"), snapshotLine());
+
+    const result = await getLatestSessionFileForCwd(fakeCwd);
+    expect(result).not.toBeNull();
+    expect(result!.sessionId).toBe("session-b");
+  });
+
+  it("returns null when the project directory doesn't exist", async () => {
+    // Use a cwd that has no matching project dir
+    const nonExistentCwd = `/cv-test-nonexistent-${Date.now()}`;
+    const result = await getLatestSessionFileForCwd(nonExistentCwd);
+    expect(result).toBeNull();
+  });
+
+  it("when multiple files have assistant messages, returns the most recently modified one", async () => {
+    setupProjectDir(`multi-assistant-${Date.now()}`);
+    await mkdir(projectDir, { recursive: true });
+
+    await writeFile(join(projectDir, "session-first.jsonl"), assistantJsonl("First response"));
+    await new Promise((r) => setTimeout(r, 20));
+    await writeFile(join(projectDir, "session-second.jsonl"), assistantJsonl("Second response"));
+    await new Promise((r) => setTimeout(r, 20));
+    await writeFile(join(projectDir, "session-third.jsonl"), assistantJsonl("Third response"));
+
+    const result = await getLatestSessionFileForCwd(fakeCwd);
+    expect(result).not.toBeNull();
+    expect(result!.sessionId).toBe("session-third");
   });
 });
