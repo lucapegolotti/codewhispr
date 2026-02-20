@@ -171,16 +171,3 @@ Voice notes (OGG) are transcribed with OpenAI Whisper, optionally cleaned up by 
 
 ---
 
-## What else could this be called?
-
-Some names that might suit this better than `codewhispr`:
-
-| Name | Vibe |
-|---|---|
-| **sidechannel** | A private back-channel to your dev machine — technical, evocative |
-| **pocketclaude** | Your AI in your pocket, always on call |
-| **whispr** | Whisper to your AI; it whispers back |
-| **codepage** | Like a pager, but for your code |
-| **tapline** | You tap the message, it runs the code |
-| **telebrain** | Telegram as a brain interface |
-| **fieldwork** | Do real work from anywhere |
