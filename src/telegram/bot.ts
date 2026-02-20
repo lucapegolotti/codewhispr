@@ -1,5 +1,6 @@
 import { Bot, Context, InputFile, InlineKeyboard } from "grammy";
 import { handleTurn, clearChatState } from "../agent/loop.js";
+import { summarizeSession } from "../agent/summarizer.js";
 import { transcribeAudio, synthesizeSpeech, polishTranscript } from "../voice.js";
 import { narrate } from "../narrator.js";
 import type { SessionResponseState } from "../session/monitor.js";
@@ -337,6 +338,17 @@ export function createBot(token: string): Bot {
 
   bot.command("compact", async (ctx) => {
     await sendClaudeCommand(ctx, "/compact");
+  });
+
+  bot.command("summarize", async (ctx) => {
+    await ctx.replyWithChatAction("typing");
+    try {
+      const summary = await summarizeSession();
+      await sendMarkdownReply(ctx, summary);
+    } catch (err) {
+      log({ message: `summarize error: ${err instanceof Error ? err.message : String(err)}` });
+      await ctx.reply("Could not generate summary — try again?");
+    }
   });
 
   bot.command("clear", async (ctx) => {
