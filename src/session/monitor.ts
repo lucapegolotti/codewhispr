@@ -181,6 +181,8 @@ export function watchForResponse(
   let completionScheduled = false;
   const seenImageHashes = new Set<string>();
   const detectedImages: DetectedImage[] = [];
+  // Image files written via the Write tool (detected by file extension)
+  const writtenImagePaths = new Set<string>();
   // Tracks an in-flight onResponse promise so the complete path can await it
   // before calling onComplete, preventing a race where two rapid chokidar events
   // cause onComplete to fire while onResponse is still awaiting the Telegram API.
@@ -231,7 +233,7 @@ export function watchForResponse(
           }
         }
 
-        // Collect images from tool_result blocks (deduplicated by data hash prefix)
+        // Collect images from tool_result blocks (deduplicated by tool_use_id + image index)
         if (onImages) {
           for (const line of lines) {
             try {
@@ -242,7 +244,9 @@ export function watchForResponse(
                 if (typeof block !== "object" || block === null) continue;
                 const b = block as Record<string, unknown>;
                 if (b["type"] !== "tool_result") continue;
+                const toolUseId = (b["tool_use_id"] as string) ?? "";
                 const inner: unknown[] = Array.isArray(b["content"]) ? b["content"] as unknown[] : [];
+                let imgIdx = 0;
                 for (const img of inner) {
                   if (typeof img !== "object" || img === null) continue;
                   const i = img as Record<string, unknown>;
@@ -252,11 +256,30 @@ export function watchForResponse(
                   const data = src["data"] as string;
                   const mediaType = src["media_type"] as string;
                   if (!data || !mediaType) continue;
-                  const hash = data.slice(0, 32);
-                  if (!seenImageHashes.has(hash)) {
-                    seenImageHashes.add(hash);
+                  const key = `${toolUseId}:${imgIdx++}`;
+                  if (!seenImageHashes.has(key)) {
+                    seenImageHashes.add(key);
                     detectedImages.push({ mediaType, data });
                   }
+                }
+              }
+            } catch { continue; }
+          }
+
+          // Also detect image files written via the Write tool
+          for (const line of lines) {
+            try {
+              const entry = JSON.parse(line);
+              if (entry.type !== "assistant") continue;
+              const content: unknown[] = entry.message?.content ?? [];
+              for (const block of content) {
+                if (typeof block !== "object" || block === null) continue;
+                const b = block as Record<string, unknown>;
+                if (b["type"] !== "tool_use" || b["name"] !== "Write") continue;
+                const input = b["input"] as Record<string, unknown> | undefined;
+                const fp = input?.["file_path"] as string | undefined;
+                if (fp && /\.(png|jpg|jpeg|gif|webp)$/i.test(fp)) {
+                  writtenImagePaths.add(fp);
                 }
               }
             } catch { continue; }
@@ -322,10 +345,24 @@ export function watchForResponse(
             await pendingResponse;
             log({ message: `watchForResponse: session ${sessionId.slice(0, 8)} completed (result event)` });
             onComplete?.();
-            if (onImages && detectedImages.length > 0) {
-              await onImages(detectedImages).catch(
-                (err) => log({ message: `watchForResponse onImages error: ${err instanceof Error ? err.message : String(err)}` })
-              );
+            if (onImages) {
+              // Read any image files written via Write tool and add to detected list
+              for (const imgPath of writtenImagePaths) {
+                try {
+                  const imgBuf = await readFile(imgPath);
+                  const ext = imgPath.split(".").pop()!.toLowerCase();
+                  const mediaType = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+                    : ext === "gif" ? "image/gif"
+                    : ext === "webp" ? "image/webp"
+                    : "image/png";
+                  detectedImages.push({ mediaType, data: imgBuf.toString("base64") });
+                } catch { /* file unreadable — skip */ }
+              }
+              if (detectedImages.length > 0) {
+                await onImages(detectedImages).catch(
+                  (err) => log({ message: `watchForResponse onImages error: ${err instanceof Error ? err.message : String(err)}` })
+                );
+              }
             }
           }, 500);
           return;
