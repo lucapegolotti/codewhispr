@@ -11,50 +11,15 @@ import { pendingImages, pendingImageCount, clearPendingImageCount } from "./call
 import { InputFile } from "grammy";
 import { writeFile, mkdir, readFile } from "fs/promises";
 import { homedir } from "os";
-import Anthropic from "@anthropic-ai/sdk";
-
-let anthropic: Anthropic | null = null;
-function getAnthropicClient(): Anthropic {
-  return (anthropic ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }));
-}
-
-// After a turn completes, check if the response text suggests images were created.
-// Uses Haiku to classify, then asks Claude Code for the exact file paths if so.
-async function checkForCreatedImages(
-  responseText: string,
-  cwd: string
-): Promise<void> {
-  // Quick keyword pre-filter — skip Haiku call if no image-related words
-  if (!/\.(png|jpg|jpeg|gif|webp)|image|chart|plot|graph|screenshot|figure/i.test(responseText)) return;
-
-  // Ask Haiku: did this turn create new image files?
-  let answer = "NO";
-  try {
-    const resp = await getAnthropicClient().messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 10,
-      messages: [{
-        role: "user",
-        content: `Did the following assistant response describe creating or generating image files (png/jpg/gif/webp)? Reply with only YES or NO.\n\n${responseText.slice(0, 1000)}`,
-      }],
-    });
-    const block = resp.content[0];
-    answer = block.type === "text" ? block.text.trim().toUpperCase() : "NO";
-  } catch (err) {
-    log({ message: `image classifier error: ${err instanceof Error ? err.message : String(err)}` });
-    return;
-  }
-
-  if (!answer.startsWith("YES")) return;
-
-  // Ask Claude Code for the exact list of image paths it created
+// Ask Claude Code for image files it created and offer them via the image picker.
+// Used by the /images command.
+export async function fetchAndOfferImages(cwd: string): Promise<void> {
   const result = await (await import("../../session/tmux.js")).injectInput(
     cwd,
-    "List only the absolute file paths of image files you created in this turn, one per line. Reply with ONLY the paths, nothing else."
+    "List only the absolute file paths of image files you created in this session, one per line. Reply with ONLY the paths, nothing else."
   );
   if (!result.found) return;
 
-  // Watch for the single-turn response containing the paths
   const latest = await getLatestSessionFileForCwd(cwd);
   if (!latest) return;
   const baseline = await getFileSize(latest.filePath);
@@ -87,13 +52,14 @@ async function checkForCreatedImages(
           const key = `${Date.now()}`;
           pendingImages.set(key, images);
           await notifyImages(images, key);
+        } else {
+          await (await import("../notifications.js")).sendPing("No image files found.");
         }
         resolve();
       },
       undefined,
       () => resolve()
     );
-    // Safety timeout
     setTimeout(resolve, 30_000);
   });
 }
@@ -186,9 +152,7 @@ export async function startInjectionWatcher(
     await writeFile(ATTACHED_SESSION_PATH, `${latestSessionId}\n${attached.cwd}`, "utf8").catch(() => {});
   }
 
-  let lastResponseText = "";
   const wrappedOnResponse = async (state: SessionResponseState) => {
-    lastResponseText = state.text;
     await (onResponse ?? notifyResponse)(state);
   };
 
@@ -204,7 +168,6 @@ export async function startInjectionWatcher(
       activeWatcherOnComplete = null;
       onComplete?.();
       void sendPing("✅ Done.");
-      if (lastResponseText) void checkForCreatedImages(lastResponseText, watchedCwd);
     },
     async (images: DetectedImage[]) => {
       const key = `${Date.now()}`;

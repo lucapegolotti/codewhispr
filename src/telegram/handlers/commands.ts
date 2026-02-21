@@ -6,7 +6,7 @@ import { findClaudePane, sendKeysToPane, killWindow } from "../../session/tmux.j
 import { summarizeSession } from "../../agent/summarizer.js";
 import { sendMarkdownReply } from "../utils.js";
 import { sendSessionPicker } from "./sessions.js";
-import { clearActiveWatcher, activeWatcherStop } from "./text.js";
+import { clearActiveWatcher, activeWatcherStop, fetchAndOfferImages } from "./text.js";
 import { unlink, writeFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
@@ -133,6 +133,16 @@ export function registerCommands(bot: Bot): void {
     );
   });
 
+  bot.command("images", async (ctx) => {
+    const attached = await getAttachedSession().catch(() => null);
+    if (!attached) {
+      await ctx.reply("No session attached. Use /sessions to pick one.");
+      return;
+    }
+    await ctx.reply("Asking Claude Code for image files…");
+    await fetchAndOfferImages(attached.cwd);
+  });
+
   bot.command("restart", async (ctx) => {
     // Send the reply and give Telegram a moment to deliver it, then exit.
     // launchd's KeepAlive will restart the service automatically.
@@ -150,6 +160,7 @@ export function registerCommands(bot: Bot): void {
     "/compact \\— trigger /compact in Claude Code",
     "/clear \\— clear Claude Code context",
     "/close\\_session \\— close the Claude Code window",
+    "/images \\— ask Claude Code for images it created",
     "/polishvoice \\— toggle voice transcript polishing on/off",
     "/restart \\— restart the bot",
     "/help \\— show this list",
