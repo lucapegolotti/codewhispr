@@ -152,13 +152,18 @@ export async function startInjectionWatcher(
     await writeFile(ATTACHED_SESSION_PATH, `${latestSessionId}\n${attached.cwd}`, "utf8").catch(() => {});
   }
 
-  // Track whether any response text was delivered during this watch session.
-  // If onComplete fires with no response delivered, a compaction may have ended
-  // the turn before Claude responded — poll for the new post-compact session file.
+  // Track whether any response text was actually sent to the user.
+  // Set only after delivery confirms — not before — so a session-ID mismatch
+  // (where notifyResponse returns false) doesn't suppress the "Done" ping.
   let responseDelivered = false;
   const wrappedOnResponse = async (state: SessionResponseState) => {
-    responseDelivered = true;
-    await (onResponse ?? notifyResponse)(state);
+    if (onResponse) {
+      await onResponse(state);
+      responseDelivered = true;
+    } else {
+      const delivered = await notifyResponse(state);
+      if (delivered) responseDelivered = true;
+    }
   };
 
   log({ message: `watchForResponse started for ${latestSessionId.slice(0, 8)}, baseline=${baseline}` });

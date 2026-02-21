@@ -76,19 +76,22 @@ export async function notifyWaiting(state: SessionWaitingState): Promise<void> {
   }
 }
 
-export async function notifyResponse(state: SessionResponseState): Promise<void> {
-  if (!registeredBot || !registeredChatId) return;
+// Returns true if the message was actually sent to the user, false if skipped.
+export async function notifyResponse(state: SessionResponseState): Promise<boolean> {
+  if (!registeredBot || !registeredChatId) return false;
 
   // Only notify for the attached session to avoid spam from other projects
   const attached = await getAttachedSession().catch(() => null);
-  if (!attached || attached.sessionId !== state.sessionId) return;
+  if (!attached || attached.sessionId !== state.sessionId) return false;
 
   const text = `{claude-code}{${state.projectName}} ${state.text.replaceAll(";", ".").replaceAll(":", ".")}`;
   try {
     await sendMarkdownMessage(registeredBot, registeredChatId, text);
     log({ chatId: registeredChatId, message: `notified response: ${state.projectName} (${state.text.slice(0, 60)})` });
+    return true;
   } catch (err) {
     log({ message: `failed to send response notification: ${err instanceof Error ? err.message : String(err)}` });
+    return false;
   }
 }
 
