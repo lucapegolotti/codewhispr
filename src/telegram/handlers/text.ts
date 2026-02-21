@@ -224,10 +224,11 @@ async function pollForPostCompactionSession(
 export async function processTextTurn(ctx: Context, chatId: number, text: string): Promise<void> {
   // Handle "Part" image count reply
   if (pendingImageCount) {
-    const n = parseInt(text.trim(), 10);
-    const { key, max } = pendingImageCount;
-    if (!isNaN(n) && n >= 1 && n <= max) {
+    const parsed = parseInt(text.trim(), 10);
+    if (!isNaN(parsed) && parsed >= 1) {
+      const { key, max } = pendingImageCount;
       clearPendingImageCount();
+      const n = Math.min(parsed, max);
       const images = pendingImages.get(key);
       if (images) {
         pendingImages.delete(key);
@@ -244,7 +245,7 @@ export async function processTextTurn(ctx: Context, chatId: number, text: string
       }
       return;
     }
-    // Not a valid number — fall through to normal message handling
+    // Not a number — fall through to normal message handling
     clearPendingImageCount();
   }
 
