@@ -9,11 +9,13 @@ import { sendSessionPicker, launchedPaneId } from "./sessions.js";
 import type { SessionResponseState, DetectedImage } from "../../session/monitor.js";
 import { pendingImages, pendingImageCount, clearPendingImageCount } from "./callbacks.js";
 import { InputFile } from "grammy";
-import { writeFile, mkdir, readFile } from "fs/promises";
+import { writeFile, mkdir, readFile, stat } from "fs/promises";
 import { homedir } from "os";
 // After a turn completes, scan Bash tool_result outputs for image file paths.
 // When a script prints something like "/tmp/chart.png", we detect and offer it.
-async function scanForScriptImages(filePath: string, baseline: number): Promise<void> {
+// Only images created/modified after startTime are included to avoid false positives
+// from pre-existing files whose paths happen to appear in tool output.
+async function scanForScriptImages(filePath: string, baseline: number, startTime: number): Promise<void> {
   const buf = await readFile(filePath).catch(() => null);
   if (!buf) return;
   const lines = buf.subarray(baseline).toString("utf8").split("\n").filter(Boolean);
@@ -34,9 +36,13 @@ async function scanForScriptImages(filePath: string, baseline: number): Promise<
         if (!text) continue;
         for (const rawLine of text.split("\n")) {
           const candidate = rawLine.trim();
-          if (/\.(png|jpg|jpeg|gif|webp)$/i.test(candidate) && !seenPaths.has(candidate)) {
+          // Require an absolute path with no spaces to avoid false positives
+          if (/^\/\S+\.(png|jpg|jpeg|gif|webp)$/i.test(candidate) && !seenPaths.has(candidate)) {
             seenPaths.add(candidate);
             try {
+              const fileStat = await stat(candidate);
+              // Skip files that predate this turn — they weren't created by this session
+              if (fileStat.mtimeMs < startTime) continue;
               const imgBuf = await readFile(candidate);
               const ext = candidate.split(".").pop()!.toLowerCase();
               const mediaType =
@@ -159,6 +165,7 @@ export async function startInjectionWatcher(
   activeWatcherOnComplete = onComplete ?? null;
   const watchedFilePath = filePath;
   const watchedCwd = attached.cwd;
+  const watcherStartTime = Date.now();
   activeWatcherStop = watchForResponse(
     filePath,
     baseline,
@@ -166,14 +173,11 @@ export async function startInjectionWatcher(
     () => sendPing("⏳ Still working..."),
     () => {
       activeWatcherOnComplete = null;
+      onComplete?.();
+      void scanForScriptImages(watchedFilePath, baseline, watcherStartTime);
       if (!responseDelivered) {
-        // No text was delivered before the result event — likely a compaction stop.
-        // Poll for the new session file that Claude Code creates after restarting.
-        log({ message: `watcher completed with no response for ${watchedCwd}, checking for post-compact session...` });
-        void pollForPostCompactionSession(myGeneration, watchedCwd, watchedFilePath, onResponse, onComplete);
-      } else {
-        onComplete?.();
-        void scanForScriptImages(watchedFilePath, baseline);
+        // Result event fired but no text was delivered — silent task completion.
+        void sendPing("✅ Done.");
       }
     },
     async (images: DetectedImage[]) => {

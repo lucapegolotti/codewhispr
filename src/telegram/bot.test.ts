@@ -23,7 +23,7 @@ vi.mock("../session/history.js", () => ({
   listSessions: vi.fn(),
   getLatestSessionFileForCwd: vi.fn(),
   readSessionLines: vi.fn().mockResolvedValue([]),
-  parseJsonlLines: vi.fn().mockReturnValue({ lastMessage: "" }),
+  parseJsonlLines: vi.fn().mockReturnValue({ lastMessage: "", cwd: "", toolCalls: [], allMessages: [] }),
 }));
 
 vi.mock("../agent/loop.js", () => ({
@@ -247,12 +247,12 @@ describe("session: callbacks", () => {
   });
 
   async function setupWithSessions(bot: Awaited<ReturnType<typeof makeBot>>["bot"], apiCalls: ApiCall[]) {
-    const pane = { paneId: "%1", cwd: SESSION.cwd, command: "claude" };
+    const pane = { paneId: "%1", cwd: SESSION.cwd, command: "claude", shellPid: 0 };
     vi.mocked(listTmuxPanes).mockResolvedValue([pane]);
     vi.mocked(isClaudePane).mockReturnValue(true);
     vi.mocked(getLatestSessionFileForCwd).mockResolvedValue({ sessionId: SESSION.sessionId, filePath: `/tmp/${SESSION.sessionId}.jsonl` });
     vi.mocked(readSessionLines).mockResolvedValue([]);
-    vi.mocked(parseJsonlLines).mockReturnValue({ lastMessage: SESSION.lastMessage });
+    vi.mocked(parseJsonlLines).mockReturnValue({ lastMessage: SESSION.lastMessage, cwd: SESSION.cwd, toolCalls: [], allMessages: [] });
     await bot.handleUpdate(commandUpdate("/sessions") as any);
     // Clear apiCalls after /sessions so we start fresh for the actual test assertions
     apiCalls.length = 0;
@@ -309,12 +309,12 @@ describe("launch: callbacks", () => {
   });
 
   async function setupWithSessions(bot: Awaited<ReturnType<typeof makeBot>>["bot"], apiCalls: ApiCall[]) {
-    const pane = { paneId: "%1", cwd: SESSION.cwd, command: "claude" };
+    const pane = { paneId: "%1", cwd: SESSION.cwd, command: "claude", shellPid: 0 };
     vi.mocked(listTmuxPanes).mockResolvedValue([pane]);
     vi.mocked(isClaudePane).mockReturnValue(true);
     vi.mocked(getLatestSessionFileForCwd).mockResolvedValue({ sessionId: SESSION.sessionId, filePath: `/tmp/${SESSION.sessionId}.jsonl` });
     vi.mocked(readSessionLines).mockResolvedValue([]);
-    vi.mocked(parseJsonlLines).mockReturnValue({ lastMessage: SESSION.lastMessage });
+    vi.mocked(parseJsonlLines).mockReturnValue({ lastMessage: SESSION.lastMessage, cwd: SESSION.cwd, toolCalls: [], allMessages: [] });
     await bot.handleUpdate(commandUpdate("/sessions") as any);
     apiCalls.length = 0;
   }
