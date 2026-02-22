@@ -1,36 +1,14 @@
 import { Box, Text, useApp, useInput } from "ink";
 import { useState, useEffect, useRef } from "react";
-import { execFile } from "child_process";
-import { homedir } from "os";
 import { StatusBar } from "./StatusBar.js";
 import { KeyBar } from "./KeyBar.js";
 import { LogPane } from "./LogPane.js";
 import { SessionPane } from "./SessionPane.js";
 import { isHookInstalled, installHook, isPermissionHookInstalled, installPermissionHook, isCompactHooksInstalled, installCompactHooks } from "../hooks/install.js";
-
-const PLIST_PATH = `${homedir()}/Library/LaunchAgents/com.codewhispr.bot.plist`;
-const SERVICE_LABEL = "com.codewhispr.bot";
+import { getServiceStatus, startService, stopService, restartService } from "../service/index.js";
 
 type Status = "running" | "stopped";
 type HookStatus = "unknown" | "installed" | "missing" | "installing";
-
-function launchctl(...args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile("launchctl", args, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr || err.message));
-      else resolve(stdout);
-    });
-  });
-}
-
-async function getServiceStatus(): Promise<Status> {
-  try {
-    const out = await launchctl("list", SERVICE_LABEL);
-    return out.includes('"PID"') ? "running" : "stopped";
-  } catch {
-    return "stopped";
-  }
-}
 
 type Props = { token: string };
 
@@ -61,16 +39,13 @@ export function Dashboard({ token: _token }: Props) {
   useInput((input) => {
     if (input === "q") exit();
     if (input === "s" && status === "stopped") {
-      launchctl("load", PLIST_PATH).then(() => getServiceStatus().then(setStatus)).catch(() => {});
+      startService().then(() => getServiceStatus().then(setStatus)).catch(() => {});
     }
     if (input === "x" && status === "running") {
-      launchctl("unload", PLIST_PATH).then(() => setStatus("stopped")).catch(() => {});
+      stopService().then(() => setStatus("stopped")).catch(() => {});
     }
     if (input === "r") {
-      const uid = process.getuid ? process.getuid() : 501;
-      launchctl("kickstart", "-k", `gui/${uid}/${SERVICE_LABEL}`)
-        .then(() => getServiceStatus().then(setStatus))
-        .catch(() => {});
+      restartService().then(() => getServiceStatus().then(setStatus)).catch(() => {});
     }
     if (input === "c") setClearCount((n) => n + 1);
     if (input === "i" && (hookStatus === "missing" || permHookStatus === "missing")) {

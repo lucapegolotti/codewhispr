@@ -1,0 +1,13 @@
+#!/bin/sh
+# Follow symlinks to find the real script location (macOS compatible)
+script="$0"
+while [ -L "$script" ]; do
+  link=$(readlink "$script")
+  if [ "$(expr "$link" : '/.*')" -gt 0 ]; then
+    script="$link"
+  else
+    script="$(dirname "$script")/$link"
+  fi
+done
+dir=$(cd "$(dirname "$script")/.." && pwd)
+"$dir/node_modules/.bin/tsx" "$dir/src/index.ts" "$@"

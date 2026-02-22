@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "codewhispr": "bin/claude-voice"
+    "codewhispr": "bin/codewhispr"
   },
   "scripts": {
     "start": "tsx src/index.ts",

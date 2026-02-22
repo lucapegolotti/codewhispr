@@ -196,9 +196,10 @@ async function hasAssistantMessages(filePath: string): Promise<boolean> {
 export async function getLatestSessionFileForCwd(
   cwd: string
 ): Promise<{ filePath: string; sessionId: string } | null> {
-  // Claude Code encodes the cwd as a directory name by replacing "/" with "-".
-  // e.g. /Users/luca/repositories/foo → -Users-luca-repositories-foo
-  const dirName = cwd.replace(/\//g, "-");
+  // Claude Code encodes the cwd as a directory name by replacing all non-alphanumeric
+  // characters (slashes, underscores, dots, etc.) with "-".
+  // e.g. /home/luca_dev/repositories/foo → -home-luca-dev-repositories-foo
+  const dirName = cwd.replace(/[^a-zA-Z0-9]/g, "-");
   const projectDir = `${PROJECTS_PATH}/${dirName}`;
 
   let files: string[];

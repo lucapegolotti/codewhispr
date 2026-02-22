@@ -10,7 +10,7 @@ codewhispr is a Telegram bot that acts as a remote interface for [Claude Code](h
 
 ## Prerequisites
 
-- macOS (uses launchd + tmux)
+- macOS or Linux (uses launchd on macOS, systemd on Linux)
 - Node.js 18+
 - [tmux](https://github.com/tmux/tmux) — `brew install tmux`
 - Claude Code — `npm install -g @anthropic-ai/claude-code`
@@ -24,6 +24,14 @@ npm install
 npm install -g .
 codewhispr
 ```
+
+> **Permission error?** If `npm install -g .` fails with `EACCES`, configure npm to use a user-writable directory:
+> ```bash
+> mkdir -p ~/.npm-global
+> npm config set prefix '~/.npm-global'
+> export PATH="$HOME/.npm-global/bin:$PATH"  # add this line to your ~/.zshrc or ~/.bashrc
+> npm install -g .
+> ```
 
 On first run, a setup wizard walks you through:
 
