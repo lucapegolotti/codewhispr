@@ -7,6 +7,15 @@ export const pendingImages = new Map<string, DetectedImage[]>();
 export let pendingImageCount: { key: string; max: number } | null = null;
 export function clearPendingImageCount(): void { pendingImageCount = null; }
 
+// Sweep stale pending images every 5 minutes (keys are Date.now() timestamps)
+const PENDING_IMAGES_MAX_AGE = 30 * 60_000; // 30 minutes
+setInterval(() => {
+  const cutoff = Date.now() - PENDING_IMAGES_MAX_AGE;
+  for (const key of pendingImages.keys()) {
+    if (parseInt(key, 10) < cutoff) pendingImages.delete(key);
+  }
+}, 5 * 60_000);
+
 export async function handleImagesCallback(ctx: Context, data: string, bot: Bot): Promise<void> {
   const parts = data.split(":");
   const action = parts[1];

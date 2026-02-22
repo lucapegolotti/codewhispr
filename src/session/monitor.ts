@@ -84,6 +84,21 @@ export function startMonitor(onWaiting: WaitingCallback, watchPath: string = PRO
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   // Track last text we notified per file to avoid duplicate notifications
   const lastNotified = new Map<string, string>();
+  // Track when each entry was last updated so we can sweep stale entries
+  const lastNotifiedTime = new Map<string, number>();
+
+  // Sweep stale entries every 10 minutes to prevent unbounded growth
+  const SWEEP_INTERVAL = 10 * 60_000;
+  const SWEEP_MAX_AGE = 60 * 60_000; // 1 hour
+  const sweepId = setInterval(() => {
+    const now = Date.now();
+    for (const [key, time] of lastNotifiedTime) {
+      if (now - time > SWEEP_MAX_AGE) {
+        lastNotified.delete(key);
+        lastNotifiedTime.delete(key);
+      }
+    }
+  }, SWEEP_INTERVAL);
 
   // Watch the directory directly — chokidar glob patterns don't reliably
   // fire change events on macOS for files in ~/.claude/projects subdirs.
@@ -131,6 +146,7 @@ export function startMonitor(onWaiting: WaitingCallback, watchPath: string = PRO
 
       if (waitingType) {
         lastNotified.set(filePath, dedupKey);
+        lastNotifiedTime.set(filePath, Date.now());
         log({ message: `session ${sessionId.slice(0, 8)} waiting (${waitingType}): ${lastText!.slice(0, 80)}` });
         await onWaiting({ sessionId, projectName, cwd, filePath, waitingType, prompt: lastText! }).catch(
           (err) => log({ message: `notification error: ${err instanceof Error ? err.message : String(err)}` })
@@ -139,6 +155,7 @@ export function startMonitor(onWaiting: WaitingCallback, watchPath: string = PRO
         // ExitPlanMode is detected in the JSONL — the plan approval choices are
         // always the same fixed set, so we fire immediately without pane capture.
         lastNotified.set(filePath, dedupKey);
+        lastNotifiedTime.set(filePath, Date.now());
         const choices = [
           "Yes, clear context and bypass permissions",
           "Yes, bypass permissions",
@@ -168,6 +185,7 @@ export function startMonitor(onWaiting: WaitingCallback, watchPath: string = PRO
 
   return () => {
     watcher.close();
+    clearInterval(sweepId);
     for (const t of timers.values()) clearTimeout(t);
   };
 }
@@ -210,12 +228,24 @@ export function watchForResponse(
 
   const cleanup = () => {
     clearTimeout(pingId);
+    clearTimeout(maxLifetimeId);
     watcher.close();
   };
 
   const pingId = setTimeout(() => {
     if (!done && lastSentText === null) onPing?.();
   }, 60_000);
+
+  // Safety timeout: if no result event arrives within 10 minutes, clean up
+  // to prevent leaked watchers from accumulating indefinitely.
+  const MAX_LIFETIME = 10 * 60_000;
+  const maxLifetimeId = setTimeout(() => {
+    if (done) return;
+    done = true;
+    cleanup();
+    log({ message: `watchForResponse: session ${sessionId.slice(0, 8)} timed out after ${MAX_LIFETIME / 60_000}min` });
+    onComplete?.();
+  }, MAX_LIFETIME);
 
   watcher.on("change", () => {
     if (done) return;
