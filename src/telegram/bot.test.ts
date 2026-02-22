@@ -224,6 +224,75 @@ describe("e2e: /clear then question — watchForResponse called on new session f
 });
 
 // ---------------------------------------------------------------------------
+// processTextTurn — no session / no Claude Code running
+// ---------------------------------------------------------------------------
+
+describe("processTextTurn edge cases", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Ensure watcher is inactive so the interrupt block doesn't fire
+    vi.mocked(findClaudePane).mockResolvedValue({ found: false, reason: "no_claude_pane" });
+  });
+
+  afterEach(() => {
+    vi.mocked(getAttachedSession).mockReset();
+    vi.mocked(listSessions).mockReset();
+    vi.mocked(injectInput).mockReset();
+    vi.mocked(findClaudePane).mockReset();
+    vi.mocked(getLatestSessionFileForCwd).mockReset();
+  });
+
+  it("replies 'No session attached' when no session exists", async () => {
+    const { bot, apiCalls } = await makeBot();
+
+    vi.mocked(getAttachedSession).mockResolvedValue(null);
+    vi.mocked(listSessions).mockResolvedValue([]);
+
+    await bot.handleUpdate(textUpdate("hello") as any);
+
+    const texts = apiCalls
+      .filter((c) => c.method === "sendMessage")
+      .map((c) => c.payload.text as string);
+    expect(texts.some((t) => t.includes("No session attached"))).toBe(true);
+  });
+
+  it("replies 'No Claude Code running' when injection fails", async () => {
+    const { bot, apiCalls } = await makeBot();
+
+    vi.mocked(getAttachedSession).mockResolvedValue({ sessionId: "s1", cwd: "/proj" });
+    vi.mocked(getLatestSessionFileForCwd).mockResolvedValue({ sessionId: "s1", filePath: "/s1.jsonl" });
+    vi.mocked(getFileSize).mockResolvedValue(0);
+    vi.mocked(injectInput).mockResolvedValue({ found: false, reason: "no_claude_pane" });
+
+    await bot.handleUpdate(textUpdate("hello") as any);
+
+    const texts = apiCalls
+      .filter((c) => c.method === "sendMessage")
+      .map((c) => c.payload.text as string);
+    expect(texts.some((t) => t.includes("No Claude Code running"))).toBe(true);
+  });
+
+  it("sets up watcher when injection succeeds", async () => {
+    const { bot } = await makeBot();
+
+    vi.mocked(getAttachedSession).mockResolvedValue({ sessionId: "s1", cwd: "/proj" });
+    vi.mocked(getLatestSessionFileForCwd).mockResolvedValue({ sessionId: "s1", filePath: "/s1.jsonl" });
+    vi.mocked(getFileSize).mockResolvedValue(0);
+    vi.mocked(injectInput).mockResolvedValue({ found: true, paneId: "%1" });
+
+    let watchCalled = false;
+    vi.mocked(watchForResponse).mockImplementation(() => {
+      watchCalled = true;
+      return () => {};
+    });
+
+    await bot.handleUpdate(textUpdate("hello") as any);
+
+    expect(watchCalled).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // /detach command
 // ---------------------------------------------------------------------------
 
