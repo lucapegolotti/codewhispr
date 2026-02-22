@@ -168,6 +168,7 @@ export async function startInjectionWatcher(
     wrappedOnResponse,
     () => sendPing("⏳ Still working..."),
     () => {
+      compactPollGeneration++;  // abort any active rotation poll
       activeWatcherOnComplete = null;
       onComplete?.();
       if (!responseDelivered) void sendPing("✅ Done.");
@@ -178,6 +179,9 @@ export async function startInjectionWatcher(
       await notifyImages(images, key);
     }
   );
+
+  // Start polling for session rotation (compaction / plan approval) in the background.
+  void pollForPostCompactionSession(myGeneration, watchedCwd, filePath, onResponse, onComplete);
 }
 
 // After a compaction, Claude Code restarts with a new JSONL file. Poll until we
@@ -199,6 +203,7 @@ async function pollForPostCompactionSession(
     if (latest && latest.filePath !== oldFilePath) {
       log({ message: `post-compact: new session found ${latest.sessionId.slice(0, 8)}, restarting watcher` });
       await writeFile(ATTACHED_SESSION_PATH, `${latest.sessionId}\n${cwd}`, "utf8").catch(() => {});
+      activeWatcherStop?.();  // stop old chokidar watcher before replacing
       activeWatcherOnComplete = onComplete ?? null;
       activeWatcherStop = watchForResponse(
         latest.filePath,
