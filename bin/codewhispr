@@ -9,5 +9,5 @@ while [ -L "$script" ]; do
     script="$(dirname "$script")/$link"
   fi
 done
-dir=$(cd "$(dirname "$script")/.." && pwd)
-"$dir/node_modules/.bin/tsx" "$dir/src/tui.tsx" "$@"
+dir=$(cd "$(dirname "$script")/.." && pwd -P)
+"$dir/node_modules/.bin/tsx" --tsconfig "$dir/tsconfig.json" "$dir/src/tui.tsx" "$@"
