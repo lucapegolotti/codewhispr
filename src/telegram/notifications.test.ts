@@ -281,6 +281,92 @@ describe("notifyPermission", () => {
 });
 
 // ---------------------------------------------------------------------------
+// notifyWaiting — prompt rendering
+// ---------------------------------------------------------------------------
+
+describe("notifyWaiting prompt rendering", () => {
+  const chatId = 12345;
+  let mockBot: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockBot = { api: { sendMessage: vi.fn().mockResolvedValue({}) } };
+    registerForNotifications(mockBot, chatId);
+  });
+
+  const makeState = (prompt: string, waitingType = WaitingType.MULTIPLE_CHOICE) => ({
+    sessionId: "session-abc",
+    projectName: "myproject",
+    cwd: "/proj",
+    filePath: "/path/to/session.jsonl",
+    waitingType,
+    prompt,
+    choices: ["Option A"],
+  });
+
+  it("sends prompt as a separate message before the header+keyboard message", async () => {
+    await notifyWaiting(makeState("## My Plan\nDo the thing."));
+
+    const calls = mockBot.api.sendMessage.mock.calls;
+    expect(calls.length).toBe(2);
+    // First call: prompt text with Markdown parse mode (from sendMarkdownMessage)
+    expect(calls[0][1]).toBe("## My Plan\nDo the thing.");
+    expect(calls[0][2]).toEqual(expect.objectContaining({ parse_mode: "Markdown" }));
+    // Second call: header with keyboard
+    expect(calls[1][1]).toContain("⚠️ Claude is waiting");
+    expect(calls[1][2]?.reply_markup).toBeDefined();
+  });
+
+  it("sends prompt without italic wrapping or quote marks", async () => {
+    await notifyWaiting(makeState("**Bold** and `code`"));
+
+    const promptCall = mockBot.api.sendMessage.mock.calls[0];
+    const text: string = promptCall[1];
+    expect(text).toBe("**Bold** and `code`");
+    expect(text).not.toContain('_"');
+    expect(text).not.toContain('"_');
+  });
+
+  it("does not truncate prompts longer than 2000 chars", async () => {
+    const longPrompt = "x".repeat(3000);
+    await notifyWaiting(makeState(longPrompt));
+
+    const promptCall = mockBot.api.sendMessage.mock.calls[0];
+    expect(promptCall[1]).toBe(longPrompt);
+    expect(promptCall[1].length).toBe(3000);
+  });
+
+  it("skips prompt message when prompt is empty", async () => {
+    await notifyWaiting(makeState(""));
+
+    const calls = mockBot.api.sendMessage.mock.calls;
+    // Only the header+keyboard message
+    expect(calls.length).toBe(1);
+    expect(calls[0][1]).toContain("⚠️ Claude is waiting");
+    expect(calls[0][2]?.reply_markup).toBeDefined();
+  });
+
+  it("falls back to plain text when markdown parse fails", async () => {
+    // First call (markdown) fails, second call (plain text) succeeds,
+    // third call is the header+keyboard
+    mockBot.api.sendMessage
+      .mockRejectedValueOnce(new Error("parse error"))
+      .mockResolvedValue({});
+
+    await notifyWaiting(makeState("bad _markdown"));
+
+    const calls = mockBot.api.sendMessage.mock.calls;
+    expect(calls.length).toBe(3);
+    // First: markdown attempt (failed)
+    expect(calls[0][2]).toEqual(expect.objectContaining({ parse_mode: "Markdown" }));
+    // Second: plain text fallback (no parse_mode)
+    expect(calls[1][2]).toBeUndefined();
+    // Third: header+keyboard
+    expect(calls[2][1]).toContain("⚠️ Claude is waiting");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // notifyWaiting — MULTIPLE_CHOICE
 // ---------------------------------------------------------------------------
 
@@ -314,7 +400,8 @@ describe("notifyWaiting with MULTIPLE_CHOICE", () => {
 
     await notifyWaiting(makeState(choices));
 
-    const call = mockBot.api.sendMessage.mock.calls[0];
+    const calls = mockBot.api.sendMessage.mock.calls;
+    const call = calls[calls.length - 1];
     const keyboard = call[2]?.reply_markup?.inline_keyboard as Array<Array<{ text: string; callback_data: string }>>;
     expect(keyboard).toBeDefined();
     const allButtons = keyboard.flat();
@@ -329,7 +416,8 @@ describe("notifyWaiting with MULTIPLE_CHOICE", () => {
     const longChoice = "Yes, clear context (21% used) and bypass permissions"; // > 40 chars
     await notifyWaiting(makeState([longChoice, "Short option"]));
 
-    const call = mockBot.api.sendMessage.mock.calls[0];
+    const calls = mockBot.api.sendMessage.mock.calls;
+    const call = calls[calls.length - 1];
     const keyboard = call[2]?.reply_markup?.inline_keyboard as Array<Array<{ text: string; callback_data: string }>>;
     const allButtons = keyboard.flat();
     const btn1 = allButtons.find((b) => b.callback_data === "waiting:choice:1");
@@ -340,7 +428,8 @@ describe("notifyWaiting with MULTIPLE_CHOICE", () => {
   it("always includes Send custom input and Ignore buttons", async () => {
     await notifyWaiting(makeState(["Option A", "Option B"]));
 
-    const call = mockBot.api.sendMessage.mock.calls[0];
+    const calls = mockBot.api.sendMessage.mock.calls;
+    const call = calls[calls.length - 1];
     const keyboard = call[2]?.reply_markup?.inline_keyboard as Array<Array<{ text: string; callback_data: string }>>;
     const allButtons = keyboard.flat();
     expect(allButtons.find((b) => b.callback_data === "waiting:custom")).toBeDefined();

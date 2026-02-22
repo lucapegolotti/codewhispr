@@ -66,14 +66,14 @@ function buildWaitingKeyboard(waitingType: WaitingType, choices?: string[]): Inl
 export async function notifyWaiting(state: SessionWaitingState): Promise<void> {
   if (!registeredBot || !registeredChatId) return;
 
-  const prompt = state.prompt.length > 2000
-    ? state.prompt.slice(0, 2000) + "…"
-    : state.prompt;
-  const text = `⚠️ Claude is waiting in \`${state.projectName}\`:\n\n_"${prompt}"_`;
   const keyboard = buildWaitingKeyboard(state.waitingType, state.choices);
 
   try {
-    await registeredBot.api.sendMessage(registeredChatId, text, {
+    if (state.prompt) {
+      await sendMarkdownMessage(registeredBot, registeredChatId, state.prompt);
+    }
+    const header = `⚠️ Claude is waiting in \`${state.projectName}\`:`;
+    await registeredBot.api.sendMessage(registeredChatId, header, {
       parse_mode: "Markdown",
       reply_markup: keyboard,
     });

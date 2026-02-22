@@ -10,15 +10,16 @@
  * the failure mode so we catch regressions without needing a live environment.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
-import { mkdir, mkdtemp, writeFile, appendFile, rm } from "fs/promises";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import { mkdir, mkdtemp, writeFile, appendFile, rm, readFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { getLatestSessionFileForCwd, PROJECTS_PATH } from "./history.js";
+import { getLatestSessionFileForCwd, PROJECTS_PATH, ATTACHED_SESSION_PATH } from "./history.js";
 import { watchForResponse, getFileSize, startMonitor, WaitingType } from "./monitor.js";
 import type { SessionResponseState, SessionWaitingState } from "./monitor.js";
 import { splitAtTables } from "../telegram/utils.js";
 import { renderTableAsPng } from "../telegram/tableImage.js";
+import { startInjectionWatcher, clearActiveWatcher } from "../telegram/handlers/text.js";
 
 // ---------------------------------------------------------------------------
 // JSONL fixture helpers — minimal representations of what Claude Code writes
@@ -570,4 +571,90 @@ describe("scenario: ExitPlanMode with input.plan delivers plan text as prompt (r
     expect(received[0].prompt).toBe(PLAN_TEXT);
     expect(received[0].choices).toEqual(HARDCODED_CHOICES);
   }, 10_000);
+});
+
+// ---------------------------------------------------------------------------
+// Scenario: session rotation during active watcher (compaction / plan approval)
+//
+// Bug: watchForResponse watches a specific file path. When Claude Code compresses
+// context and rotates to a new JSONL session file, the watcher becomes blind.
+// pollForPostCompactionSession should detect the new file and restart the watcher.
+//
+// Flow:
+//   1. Session A exists with pre-rotation content
+//   2. startInjectionWatcher starts watching session A
+//   3. Session B is created (simulating rotation) with a new response + result
+//   4. pollForPostCompactionSession detects session B and restarts the watcher
+//   5. onResponse fires with session B's text
+// ---------------------------------------------------------------------------
+
+describe("scenario: session rotation during active watcher (compaction)", () => {
+  let projectDir: string;
+  let savedAttached: string | null = null;
+
+  // Save the real attached session so pollForPostCompactionSession (which writes
+  // the test session to ATTACHED_SESSION_PATH) doesn't clobber the live bot's state.
+  beforeEach(async () => {
+    savedAttached = await readFile(ATTACHED_SESSION_PATH, "utf8").catch(() => null);
+  });
+
+  afterEach(async () => {
+    clearActiveWatcher();
+    await rm(projectDir, { recursive: true, force: true });
+    if (savedAttached !== null) {
+      await writeFile(ATTACHED_SESSION_PATH, savedAttached, "utf8").catch(() => {});
+    }
+  });
+
+  it("pollForPostCompactionSession detects new session and delivers the response", async () => {
+    const testId = Date.now();
+    const fakeCwd = `/cv-scenario-rotation-${testId}`;
+    const encodedCwd = fakeCwd.replace(/[^a-zA-Z0-9]/g, "-");
+    projectDir = join(PROJECTS_PATH, encodedCwd);
+    await mkdir(projectDir, { recursive: true });
+
+    // Session A: existing session with pre-rotation content
+    const sessionA = join(projectDir, "session-a.jsonl");
+    await writeFile(sessionA, assistantEntry("Pre-rotation response"));
+
+    const baseline = await getFileSize(sessionA);
+
+    // Start watching session A via startInjectionWatcher
+    const received: SessionResponseState[] = [];
+    let completed = false;
+    const attached = { sessionId: "session-a", cwd: fakeCwd };
+    const preBaseline = { filePath: sessionA, sessionId: "session-a", size: baseline };
+
+    await startInjectionWatcher(
+      attached,
+      0,
+      async (state) => { received.push(state); },
+      () => { completed = true; },
+      preBaseline
+    );
+
+    // Session B: new session file created by compaction/rotation.
+    // Write the assistant entry first (no result yet) so the poll detects the
+    // new file and starts a chokidar watcher on it.
+    await new Promise((r) => setTimeout(r, 500));
+    const sessionB = join(projectDir, "session-b.jsonl");
+    await writeFile(sessionB, assistantEntry("Response after compaction"));
+
+    // Wait for the poll to detect session B (~3s poll interval) and start a
+    // new chokidar watcher. Then append the result entry — the chokidar change
+    // event triggers the watcher to read the file and fire onResponse.
+    await new Promise((r) => setTimeout(r, 5000));
+    await appendFile(sessionB, resultEntry());
+
+    // Wait for the watcher to fire
+    await new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        if (received.length > 0) { clearInterval(interval); resolve(); }
+      }, 100);
+      setTimeout(() => { clearInterval(interval); resolve(); }, 10_000);
+    });
+
+    expect(received.length).toBeGreaterThan(0);
+    expect(received[received.length - 1].text).toContain("after compaction");
+  }, 20_000);
 });
