@@ -14,6 +14,47 @@ import { access } from "fs/promises";
 import { spawn } from "child_process";
 import { isServiceInstalled } from "../../service/index.js";
 
+interface AnthropicModel {
+  id: string;
+  display_name: string;
+}
+
+let cachedModels: AnthropicModel[] | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+async function fetchModels(): Promise<AnthropicModel[]> {
+  if (cachedModels && Date.now() - cacheTimestamp < CACHE_TTL) return cachedModels;
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/models?limit=100", {
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+    });
+    if (!res.ok) return cachedModels ?? [];
+    const json = (await res.json()) as { data: AnthropicModel[] };
+    // Keep only claude models, deduplicate by display_name (prefer shorter id = alias).
+    // The API returns most recent first, so first occurrence wins.
+    const seen = new Set<string>();
+    cachedModels = json.data
+      .filter((m) => m.id.startsWith("claude-"))
+      .filter((m) => {
+        if (seen.has(m.display_name)) return false;
+        seen.add(m.display_name);
+        return true;
+      });
+    cacheTimestamp = Date.now();
+    return cachedModels;
+  } catch {
+    return cachedModels ?? [];
+  }
+}
+
 const POLISH_VOICE_OFF_PATH = join(homedir(), ".codewhispr", "polish-voice-off");
 
 export const BOT_COMMANDS: Array<{ command: string; description: string; details: string }> = [
@@ -66,6 +107,11 @@ export const BOT_COMMANDS: Array<{ command: string; description: string; details
     command: "polishvoice",
     description: "Toggle voice transcript polishing on/off",
     details: "When on (default), voice messages are cleaned up by Claude before being injected into Claude Code. When off, raw Whisper transcripts are injected as-is.",
+  },
+  {
+    command: "model",
+    description: "Switch Claude Code model",
+    details: "Shows a list of available Claude models. Tap one to send /model <name> to Claude Code.",
   },
   {
     command: "restart",
@@ -212,7 +258,28 @@ export function registerCommands(bot: Bot): void {
     await sendClaudeCommand(ctx, "Escape");
   });
 
+  bot.command("model", async (ctx) => {
+    const models = await fetchModels();
+    const keyboard = new InlineKeyboard();
+    keyboard.text("Default (Sonnet)", "model:sonnet").row();
+    if (models.length > 0) {
+      for (const m of models) {
+        keyboard.text(m.display_name, `model:${m.id}`).row();
+      }
+    } else {
+      // Fallback if API is unreachable
+      keyboard.text("Opus 4.6", "model:claude-opus-4-6").row();
+      keyboard.text("Sonnet 4.6", "model:claude-sonnet-4-6").row();
+      keyboard.text("Haiku 4.5", "model:claude-haiku-4-5-20251001");
+    }
+    await ctx.reply("Choose a model:", { reply_markup: keyboard });
+  });
+
   bot.command("restart", async (ctx) => {
+    // Persist chat-id before exiting so sendStartupMessage can confirm the restart.
+    const chatIdDir = join(homedir(), ".codewhispr");
+    await mkdir(chatIdDir, { recursive: true });
+    await writeFile(join(chatIdDir, "chat-id"), String(ctx.chat.id), "utf8").catch(() => {});
     await ctx.reply("Restarting…").catch(() => {});
     const serviceInstalled = await isServiceInstalled().catch(() => false);
     if (serviceInstalled) {

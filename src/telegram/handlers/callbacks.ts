@@ -229,6 +229,24 @@ export function registerCallbacks(bot: Bot): void {
       }
     }
 
+    if (data.startsWith("model:")) {
+      const modelId = data.slice("model:".length);
+      const attached = await getAttachedSession().catch(() => null);
+      if (!attached) {
+        await ctx.answerCallbackQuery({ text: "No session attached." });
+        return;
+      }
+      const pane = await findClaudePane(attached.cwd).catch(() => ({ found: false as const, reason: "no_tmux" as const }));
+      if (!pane.found) {
+        await ctx.answerCallbackQuery({ text: "Could not find the Claude Code tmux pane." });
+        return;
+      }
+      await sendKeysToPane(pane.paneId, `/model ${modelId}`);
+      await ctx.answerCallbackQuery({ text: `Switched to ${modelId}` });
+      await ctx.editMessageText(`Model set to \`${modelId}\`.`, { parse_mode: "Markdown" });
+      return;
+    }
+
     if (data.startsWith("detach:")) {
       if (data === "detach:keep") {
         await ctx.answerCallbackQuery({ text: "Kept open." });
