@@ -177,23 +177,11 @@ export async function getSessionFilePath(sessionId: string): Promise<string | nu
   return null;
 }
 
-// Returns true if the file has non-empty content but no assistant messages.
-// Used to skip metadata-only files (e.g. file-history-snapshot entries written at
-// Claude Code startup). Empty files (fresh sessions after /clear) are not skipped.
-async function hasOnlyNonAssistantContent(filePath: string): Promise<boolean> {
-  try {
-    const content = await readFile(filePath, "utf8");
-    return content.trim().length > 0 && !content.includes('"type":"assistant"');
-  } catch {
-    return false;
-  }
-}
-
 // Returns the most recently modified session JSONL for the given working directory.
-// Skips metadata-only files (e.g. file-history-snapshot entries written at startup)
-// but accepts empty files — a fresh empty file is a valid new session (e.g. after /clear).
-// Used when the attached session ID may be stale (e.g. Claude Code restarted and
-// created a new session UUID while the bot was still watching the old one).
+// Always returns the newest file — Claude Code writes responses to the current session
+// (always the most recently modified file), whether it's empty (fresh after /clear),
+// has file-history-snapshot metadata, or has full conversation history.
+// Used when the attached session ID may be stale (e.g. after /clear or Claude Code restart).
 export async function getLatestSessionFileForCwd(
   cwd: string
 ): Promise<{ filePath: string; sessionId: string } | null> {
@@ -222,20 +210,8 @@ export async function getLatestSessionFileForCwd(
   }
   if (entries.length === 0) return null;
 
-  // Sort by mtime descending
+  // Return the most recently modified file — it is always the active session.
   entries.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-
-  // Skip files that have content but no assistant messages (e.g. file-history-snapshot
-  // entries written at Claude Code startup). Empty files (fresh session after /clear)
-  // and files with assistant messages are both valid — return the most recent of those.
-  for (const entry of entries) {
-    const filePath = `${projectDir}/${entry.file}`;
-    if (!await hasOnlyNonAssistantContent(filePath)) {
-      return { filePath, sessionId: entry.file.replace(".jsonl", "") };
-    }
-  }
-
-  // All files are metadata-only — fall back to most recently modified
   const best = entries[0];
   return {
     filePath: `${projectDir}/${best.file}`,

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createBot } from "./bot.js";
 import { findClaudePane, listTmuxPanes, isClaudePane, launchClaudeInWindow, killWindow } from "../session/tmux.js";
 import { getAttachedSession, listSessions, getLatestSessionFileForCwd, readSessionLines, parseJsonlLines } from "../session/history.js";
@@ -141,6 +141,84 @@ function commandUpdate(command: string, chatId = 12345) {
     },
   };
 }
+
+function textUpdate(text: string, chatId = 12345) {
+  return {
+    update_id: 2,
+    message: {
+      message_id: 2,
+      date: 0,
+      chat: { id: chatId, type: "private" as const, first_name: "Test" },
+      from: { id: chatId, is_bot: false, first_name: "Test" },
+      text,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// /clear then question — session rotation e2e (bot handler level)
+//
+// Verifies that when the user sends /clear followed by a question, the bot
+// sets up the watcher on the NEW session file (created after /clear), not the
+// old one.
+//
+// Key mechanics:
+//  - /clear is a bot command: handled by bot.command("clear") → sendKeysToPane only,
+//    NO watcher is set up (Claude Code has no response for /clear itself)
+//  - The question is a plain text message: handled by processTextTurn →
+//    snapshotBaseline → getLatestSessionFileForCwd → startInjectionWatcher →
+//    watchForResponse
+//
+// Reproduces the bug where the new session file had file-history-snapshot
+// metadata (non-empty, no assistant messages), was skipped by
+// getLatestSessionFileForCwd, and the bot watched the old file forever.
+// ---------------------------------------------------------------------------
+
+describe("e2e: /clear then question — watchForResponse called on new session file", () => {
+  const CWD = "/proj/myapp";
+  const NEW_SESSION = { sessionId: "new-session-id", filePath: "/new-session-id.jsonl" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // /clear goes through bot.command("clear") → getAttachedSession + findClaudePane + sendKeysToPane
+    vi.mocked(getAttachedSession).mockResolvedValue({ sessionId: "old-session-id", cwd: CWD });
+    vi.mocked(findClaudePane).mockResolvedValue({ found: true, paneId: "%1" });
+    // question goes through processTextTurn → getLatestSessionFileForCwd must return new session
+    vi.mocked(getLatestSessionFileForCwd).mockResolvedValue(NEW_SESSION);
+    vi.mocked(getFileSize).mockResolvedValue(0);
+    vi.mocked(handleTurn).mockResolvedValue("__INJECTED__");
+  });
+
+  afterEach(() => {
+    // mockReset clears implementations AND once-queues; vi.clearAllMocks() does not.
+    // This prevents leftover state from leaking into subsequent describe blocks.
+    vi.mocked(getLatestSessionFileForCwd).mockReset();
+    vi.mocked(handleTurn).mockReset();
+    vi.mocked(getAttachedSession).mockReset();
+    vi.mocked(findClaudePane).mockReset();
+  });
+
+  it("after /clear, question message watches the new session file", async () => {
+    const { bot } = await makeBot();
+
+    let capturedWatchPath: string | null = null;
+    vi.mocked(watchForResponse).mockImplementation((filePath) => {
+      capturedWatchPath = filePath;
+      return () => {};
+    });
+
+    // Message 1: /clear → bot.command("clear") → sendKeysToPane only, NO watcher
+    await bot.handleUpdate(commandUpdate("/clear") as any);
+    expect(capturedWatchPath).toBeNull(); // confirmed: /clear does not start a watcher
+
+    // Message 2: question → processTextTurn → snapshotBaseline → watchForResponse
+    // After /clear, getLatestSessionFileForCwd returns the new session (with metadata)
+    await bot.handleUpdate(textUpdate("Does Claude Code fire a hook on Ctrl+C?") as any);
+
+    // The watcher must be on the NEW session file, not the old one
+    expect(capturedWatchPath).toBe(NEW_SESSION.filePath);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // /detach command

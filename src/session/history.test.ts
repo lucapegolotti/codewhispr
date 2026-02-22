@@ -156,20 +156,21 @@ describe("getLatestSessionFileForCwd", () => {
     projectDir = join(PROJECTS_PATH, encodedCwd);
   }
 
-  it("returns the file with assistant messages even when a newer snapshot-only file exists", async () => {
-    setupProjectDir(`assistant-prefers-${Date.now()}`);
+  it("returns the newest file even when it has only snapshot metadata (post-/clear scenario)", async () => {
+    setupProjectDir(`newest-wins-${Date.now()}`);
     await mkdir(projectDir, { recursive: true });
 
     // Write older assistant file
     await writeFile(join(projectDir, "session-old.jsonl"), assistantJsonl("Hello world"));
     await new Promise((r) => setTimeout(r, 20)); // ensure distinct mtime
-    // Write newer snapshot-only file
+    // Write newer snapshot-only file — this is what Claude Code writes after /clear
     await writeFile(join(projectDir, "session-new.jsonl"), snapshotLine());
 
     const result = await getLatestSessionFileForCwd(fakeCwd);
     expect(result).not.toBeNull();
-    expect(result!.sessionId).toBe("session-old");
-    expect(result!.filePath).toContain("session-old.jsonl");
+    // newest file must be returned — it's the active session after /clear
+    expect(result!.sessionId).toBe("session-new");
+    expect(result!.filePath).toContain("session-new.jsonl");
   });
 
   it("falls back to the most-recently-modified file when no file has assistant messages", async () => {

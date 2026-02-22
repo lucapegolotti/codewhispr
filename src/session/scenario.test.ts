@@ -75,9 +75,13 @@ describe("scenario: /clear then new message", () => {
     await writeFile(oldSessionFile, assistantEntry("Previous response from last session"));
     await new Promise((r) => setTimeout(r, 20)); // ensure distinct mtime
 
-    // --- state after /clear: new empty session ---
+    // --- state after /clear: new session with only metadata (file-history-snapshot),
+    //     which is what Claude Code writes immediately after creating a new session.
+    //     This was the real failure mode: the non-empty metadata-only file was being
+    //     skipped by hasOnlyNonAssistantContent, causing the old session to be returned.
     const newSessionFile = join(projectDir, "session-new.jsonl");
-    await writeFile(newSessionFile, "");
+    const fileHistorySnapshot = JSON.stringify({ type: "file-history-snapshot", files: [] }) + "\n";
+    await writeFile(newSessionFile, fileHistorySnapshot);
 
     // 1. snapshotBaseline equivalent: find the latest session file
     const latest = await getLatestSessionFileForCwd(fakeCwd);
@@ -85,7 +89,6 @@ describe("scenario: /clear then new message", () => {
     expect(latest!.sessionId).toBe("session-new"); // must be the new session, not old
 
     const baseline = await getFileSize(latest!.filePath);
-    expect(baseline).toBe(0); // empty file
 
     // 2. Start watching the new session file
     const received: SessionResponseState[] = [];
@@ -118,6 +121,97 @@ describe("scenario: /clear then new message", () => {
     expect(received.length).toBeGreaterThan(0);
     expect(received[received.length - 1].text).toContain("10 test files");
     expect(completed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario: /clear then question — full two-message bot flow
+//
+// This is the end-to-end version of the previous test. It simulates the real
+// sequence of two separate Telegram messages:
+//
+//   Message 1: "/clear"
+//     snapshotBaseline called → old session captured (new file doesn't exist yet)
+//     /clear injected into tmux
+//     Claude Code creates new session file with file-history-snapshot metadata
+//     startInjectionWatcher set up on old file (no response expected for /clear)
+//
+//   Message 2: question
+//     snapshotBaseline called again → MUST return new session (not old)
+//     startInjectionWatcher switches to new session file
+//     Response written to new session → delivered
+//
+// Bug reproduced: hasOnlyNonAssistantContent skipped the new metadata-only file
+// and returned the old session, so the watcher watched the wrong file forever.
+// ---------------------------------------------------------------------------
+
+describe("scenario: /clear then question — two-message flow end-to-end", () => {
+  let projectDir: string;
+
+  afterEach(async () => {
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it("snapshotBaseline after /clear points at new session; watchForResponse delivers the response", async () => {
+    const testId = Date.now();
+    const fakeCwd = `/cv-scenario-e2e-${testId}`;
+    const encodedCwd = fakeCwd.replace(/[^a-zA-Z0-9]/g, "-");
+    projectDir = join(PROJECTS_PATH, encodedCwd);
+    await mkdir(projectDir, { recursive: true });
+
+    // --- Message 1: /clear ---
+    // State at snapshotBaseline time: only the old session exists.
+    const oldSessionFile = join(projectDir, "session-old.jsonl");
+    await writeFile(oldSessionFile, assistantEntry("Previous response"));
+    await new Promise((r) => setTimeout(r, 20)); // ensure distinct mtime
+
+    // snapshotBaseline for /clear → returns old session (new file not created yet)
+    const baselineForClear = await getLatestSessionFileForCwd(fakeCwd);
+    expect(baselineForClear!.sessionId).toBe("session-old");
+
+    // /clear injected → Claude Code creates new session with file-history-snapshot
+    const newSessionFile = join(projectDir, "session-new.jsonl");
+    const fileHistorySnapshot = JSON.stringify({ type: "file-history-snapshot", files: [] }) + "\n";
+    await writeFile(newSessionFile, fileHistorySnapshot);
+    await new Promise((r) => setTimeout(r, 20)); // ensure new file has later mtime
+
+    // --- Message 2: question ---
+    // snapshotBaseline for question → must return new session (not old)
+    const baselineForQuestion = await getLatestSessionFileForCwd(fakeCwd);
+    expect(baselineForQuestion).not.toBeNull();
+    expect(baselineForQuestion!.sessionId).toBe("session-new");
+
+    const baseline = await getFileSize(baselineForQuestion!.filePath);
+
+    // Start watching the new session file (as startInjectionWatcher would)
+    const received: SessionResponseState[] = [];
+    let completed = false;
+    const stop = watchForResponse(
+      baselineForQuestion!.filePath,
+      baseline,
+      async (state) => { received.push(state); },
+      undefined,
+      () => { completed = true; },
+    );
+
+    // Simulate Claude responding in the new session
+    await new Promise((r) => setTimeout(r, 50));
+    await appendFile(newSessionFile, assistantEntry("No, Ctrl+C does not fire a Stop hook."));
+    await new Promise((r) => setTimeout(r, 50));
+    await appendFile(newSessionFile, resultEntry());
+
+    // Wait for delivery
+    await new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        if (completed) { clearInterval(interval); resolve(); }
+      }, 50);
+      setTimeout(() => { clearInterval(interval); resolve(); }, 3000);
+    });
+    stop();
+
+    expect(completed).toBe(true);
+    expect(received.length).toBeGreaterThan(0);
+    expect(received[received.length - 1].text).toContain("Ctrl+C");
   });
 });
 
