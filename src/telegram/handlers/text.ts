@@ -8,7 +8,7 @@ import { sendMarkdownReply } from "../utils.js";
 import { sendSessionPicker, launchedPaneId } from "./sessions.js";
 import { findClaudePane, sendInterrupt } from "../../session/tmux.js";
 import type { SessionResponseState, DetectedImage } from "../../session/monitor.js";
-import { pendingImages, pendingImageCount, clearPendingImageCount } from "./callbacks.js";
+import { pendingImages, pendingImageCount, clearPendingImageCount } from "./callbacks/index.js";
 import { InputFile } from "grammy";
 import { writeFile, mkdir, readFile } from "fs/promises";
 import { homedir } from "os";

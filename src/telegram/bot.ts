@@ -5,7 +5,7 @@ import { processTextTurn } from "./handlers/text.js";
 import { handleVoice } from "./handlers/voice.js";
 import { handleImageMessage } from "./handlers/image.js";
 import { registerCommands } from "./handlers/commands.js";
-import { registerCallbacks } from "./handlers/callbacks.js";
+import { registerCallbacks } from "./handlers/callbacks/index.js";
 import { registerForNotifications } from "./notifications.js";
 import { log } from "../logger.js";
 
