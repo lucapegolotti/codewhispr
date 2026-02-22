@@ -1,4 +1,5 @@
 import { createBot } from "./telegram/bot.js";
+import { BOT_COMMANDS } from "./telegram/handlers/commands.js";
 import { loadConfig } from "./config/config.js";
 import { startMonitor } from "./session/monitor.js";
 import { watchPermissionRequests } from "./session/permissions.js";
@@ -54,5 +55,8 @@ await bot.start({
   onStart: () => {
     console.log("codewhispr bot running");
     sendStartupMessage(bot).catch(() => {});
+    bot.api.setMyCommands(BOT_COMMANDS)
+      .then(() => console.log("setMyCommands: registered", BOT_COMMANDS.length, "commands"))
+      .catch((err) => console.error("setMyCommands error:", err));
   },
 });

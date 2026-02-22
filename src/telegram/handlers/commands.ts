@@ -14,6 +14,69 @@ import { access } from "fs/promises";
 
 const POLISH_VOICE_OFF_PATH = join(homedir(), ".codewhispr", "polish-voice-off");
 
+export const BOT_COMMANDS: Array<{ command: string; description: string; details: string }> = [
+  {
+    command: "sessions",
+    description: "Pick a Claude Code session to attach to",
+    details: "Lists all Claude Code sessions found under ~/.claude/projects/. Tap one to attach — the bot will then forward Claude's responses and accept your messages.",
+  },
+  {
+    command: "status",
+    description: "Show attached session info",
+    details: "Shows the project name, working directory, and watcher state of the currently attached session.",
+  },
+  {
+    command: "detach",
+    description: "Detach from current session",
+    details: "Stops watching the current session. Offers to also close the Claude Code tmux window. Messages you send afterwards won't be forwarded until you attach again.",
+  },
+  {
+    command: "clear",
+    description: "Clear Claude Code context (/clear)",
+    details: "Sends /clear to Claude Code, starting a fresh conversation context while keeping the same tmux session open.",
+  },
+  {
+    command: "compact",
+    description: "Compact the conversation (/compact)",
+    details: "Sends /compact to Claude Code, compressing the conversation history to save context space.",
+  },
+  {
+    command: "escape",
+    description: "Send Escape to cancel Claude's current action",
+    details: "Sends the Escape key to the Claude Code tmux pane. Use this to interrupt a running action without sending a new message.",
+  },
+  {
+    command: "summarize",
+    description: "Summarise the current session",
+    details: "Reads the current session's JSONL history and asks Claude to produce a concise summary of what has been done so far.",
+  },
+  {
+    command: "images",
+    description: "Ask Claude Code for images it created",
+    details: "Asks Claude Code to list image files it has created in the working directory, then offers to send them to you.",
+  },
+  {
+    command: "close_session",
+    description: "Detach and close the Claude Code tmux window",
+    details: "Detaches from the session and kills the Claude Code tmux window in one step. Use this when you're done with a project entirely.",
+  },
+  {
+    command: "polishvoice",
+    description: "Toggle voice transcript polishing on/off",
+    details: "When on (default), voice messages are cleaned up by Claude before being injected into Claude Code. When off, raw Whisper transcripts are injected as-is.",
+  },
+  {
+    command: "restart",
+    description: "Restart the bot service",
+    details: "Exits the bot process. The system service (launchd/systemd) restarts it automatically. Use this to pick up code changes.",
+  },
+  {
+    command: "help",
+    description: "Show this command list with descriptions",
+    details: "Shows all available commands with full descriptions.",
+  },
+];
+
 async function isVoicePolishEnabled(): Promise<boolean> {
   try {
     await access(POLISH_VOICE_OFF_PATH);
@@ -143,6 +206,10 @@ export function registerCommands(bot: Bot): void {
     await fetchAndOfferImages(attached.cwd);
   });
 
+  bot.command("escape", async (ctx) => {
+    await sendClaudeCommand(ctx, "Escape");
+  });
+
   bot.command("restart", async (ctx) => {
     // Send the reply and give Telegram a moment to deliver it, then exit.
     // launchd's KeepAlive will restart the service automatically.
@@ -150,27 +217,23 @@ export function registerCommands(bot: Bot): void {
     setTimeout(() => process.exit(0), 500);
   });
 
+  const escMd = (s: string) => s.replace(/[_*[\]()~`>#+=|{}.!\\-]/g, "\\$&");
   const HELP_TEXT = [
-    "*claude\\-voice commands*",
+    "*codewhispr commands*",
     "",
-    "/sessions \\— pick a Claude Code session to attach to",
-    "/detach \\— detach from current session",
-    "/status \\— show attached session info",
-    "/summarize \\— summarise the current session",
-    "/compact \\— trigger /compact in Claude Code",
-    "/clear \\— clear Claude Code context",
-    "/close\\_session \\— close the Claude Code window",
-    "/images \\— ask Claude Code for images it created",
-    "/polishvoice \\— toggle voice transcript polishing on/off",
-    "/restart \\— restart the bot",
-    "/help \\— show this list",
+    ...BOT_COMMANDS.flatMap(({ command, details }) => [
+      `*/${command.replace(/_/g, "\\_")}*`,
+      escMd(details),
+      "",
+    ]),
   ].join("\n");
 
   bot.command("help", async (ctx) => {
     await ctx.reply(HELP_TEXT, { parse_mode: "MarkdownV2" }).catch(() =>
       ctx.reply(
-        "Commands: /sessions /detach /status /summarize /compact /clear /close_session /polishvoice /restart /help"
+        "Commands: /sessions /detach /status /summarize /compact /clear /escape /close_session /polishvoice /restart /help"
       )
     );
   });
+
 }
