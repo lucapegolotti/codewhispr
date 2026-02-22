@@ -65,3 +65,10 @@ describe("launchClaudeInWindow and killWindow", () => {
     expect(typeof mod.killWindow).toBe("function");
   });
 });
+
+describe("sendInterrupt", () => {
+  it("is exported from tmux.ts", async () => {
+    const mod = await import("./tmux.js");
+    expect(typeof mod.sendInterrupt).toBe("function");
+  });
+});

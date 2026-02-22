@@ -216,6 +216,98 @@ describe("scenario: /clear then question — two-message flow end-to-end", () =>
 });
 
 // ---------------------------------------------------------------------------
+// Scenario: interrupt mid-turn — new watcher starts from post-interrupt baseline
+//
+// Reproduces the interrupt feature flow:
+//   1. Old watcher is active while Claude is mid-turn (partial output written)
+//   2. New message arrives: old watcher is stopped and its onComplete is called
+//   3. A new baseline is taken AFTER the interrupted output (the 600ms wait in
+//      processTextTurn ensures Claude has flushed the interrupted state)
+//   4. New watcher is started from the new baseline and delivers only the new
+//      turn's response — the interrupted partial output is excluded.
+// ---------------------------------------------------------------------------
+
+describe("scenario: interrupt mid-turn — new watcher sees only new turn", () => {
+  let projectDir: string;
+
+  afterEach(async () => {
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it("old onComplete fires and new watcher ignores interrupted output", async () => {
+    const testId = Date.now();
+    const fakeCwd = `/cv-scenario-interrupt-${testId}`;
+    const encodedCwd = fakeCwd.replace(/[^a-zA-Z0-9]/g, "-");
+    projectDir = join(PROJECTS_PATH, encodedCwd);
+    await mkdir(projectDir, { recursive: true });
+
+    const sessionFile = join(projectDir, "session-interrupt.jsonl");
+    await writeFile(sessionFile, "");
+    const oldBaseline = await getFileSize(sessionFile);
+
+    // Start old watcher (simulating a turn that's in progress)
+    let oldOnCompleteCalled = false;
+    const oldStop = watchForResponse(
+      sessionFile,
+      oldBaseline,
+      async () => {},
+      undefined,
+      () => { oldOnCompleteCalled = true; },
+    );
+
+    // Claude writes partial output mid-turn (no result entry yet)
+    await appendFile(sessionFile, assistantEntry("Partial output from interrupted turn"));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Interrupt: stop old watcher (as processTextTurn does) and call its onComplete
+    // (simulates clearing the typing interval)
+    oldStop();
+    // Simulate calling activeWatcherOnComplete?.()
+    oldOnCompleteCalled = true;
+
+    // Take new baseline AFTER the interrupted output (as processTextTurn does after 600ms)
+    const postInterruptBaseline = await getFileSize(sessionFile);
+
+    // Start new watcher from post-interrupt baseline
+    const newReceived: SessionResponseState[] = [];
+    let newCompleted = false;
+    const newStop = watchForResponse(
+      sessionFile,
+      postInterruptBaseline,
+      async (state) => { newReceived.push(state); },
+      undefined,
+      () => { newCompleted = true; },
+    );
+
+    // Claude responds to the new message
+    await new Promise((r) => setTimeout(r, 50));
+    await appendFile(sessionFile, assistantEntry("Response to the new message after interrupt"));
+    await new Promise((r) => setTimeout(r, 50));
+    await appendFile(sessionFile, resultEntry());
+
+    // Wait for new watcher to fire
+    await new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        if (newCompleted) { clearInterval(interval); resolve(); }
+      }, 50);
+      setTimeout(() => { clearInterval(interval); resolve(); }, 3000);
+    });
+    newStop();
+
+    // Old watcher's onComplete was called (typing interval cleared)
+    expect(oldOnCompleteCalled).toBe(true);
+
+    // New watcher delivers only the new turn's content
+    expect(newCompleted).toBe(true);
+    expect(newReceived.length).toBeGreaterThan(0);
+    const deliveredText = newReceived[newReceived.length - 1].text;
+    expect(deliveredText).toContain("new message after interrupt");
+    // Baseline excludes the interrupted partial output
+    expect(deliveredText).not.toContain("Partial output from interrupted turn");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Scenario: response containing a markdown table is detected and rendered
 //
 // Verifies the full pipeline from raw JSONL text → watchForResponse fires →

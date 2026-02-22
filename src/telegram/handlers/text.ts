@@ -6,6 +6,7 @@ import { watchForResponse, getFileSize } from "../../session/monitor.js";
 import { notifyResponse, notifyImages, sendPing } from "../notifications.js";
 import { sendMarkdownReply } from "../utils.js";
 import { sendSessionPicker, launchedPaneId } from "./sessions.js";
+import { findClaudePane, sendInterrupt } from "../../session/tmux.js";
 import type { SessionResponseState, DetectedImage } from "../../session/monitor.js";
 import { pendingImages, pendingImageCount, clearPendingImageCount } from "./callbacks.js";
 import { InputFile } from "grammy";
@@ -245,6 +246,24 @@ export async function processTextTurn(ctx: Context, chatId: number, text: string
   }
 
   const attached = await ensureSession(ctx, chatId);
+
+  // If Claude is currently processing (active watcher), interrupt it with Ctrl+C
+  // so the new message takes effect immediately instead of queuing after the current turn.
+  if (activeWatcherStop && attached) {
+    const pane = await findClaudePane(attached.cwd);
+    if (pane.found) {
+      log({ message: `Interrupting Claude Code (Ctrl+C) for new message` });
+      // Stop old watcher first so it doesn't process the interrupt's result event
+      activeWatcherStop();
+      activeWatcherStop = null;
+      activeWatcherOnComplete?.();   // clears the old typing interval
+      activeWatcherOnComplete = null;
+      await sendInterrupt(pane.paneId);
+      // Wait for Claude to write interrupted state to JSONL before snapshotting baseline
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  }
+
   // Snapshot file position BEFORE injection — avoids missing fast responses where
   // Claude writes to the JSONL before startInjectionWatcher reads the file size.
   const preBaseline = attached ? await snapshotBaseline(attached.cwd) : null;

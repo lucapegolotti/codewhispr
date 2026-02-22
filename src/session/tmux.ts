@@ -117,6 +117,11 @@ export async function sendRawKeyToPane(paneId: string, key: string): Promise<voi
   await execAsync(`tmux send-keys -t '${paneId}' '${key}'`);
 }
 
+export async function sendInterrupt(paneId: string): Promise<void> {
+  // C-c must be unquoted so tmux interprets it as the Ctrl+C control sequence
+  await execAsync(`tmux send-keys -t '${paneId}' C-c`);
+}
+
 export async function injectInput(
   targetCwd: string,
   input: string,
