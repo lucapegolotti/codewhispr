@@ -16,6 +16,8 @@ import { join } from "path";
 import { getLatestSessionFileForCwd, PROJECTS_PATH } from "./history.js";
 import { watchForResponse, getFileSize } from "./monitor.js";
 import type { SessionResponseState } from "./monitor.js";
+import { splitAtTables } from "../telegram/utils.js";
+import { renderTableAsPng } from "../telegram/tableImage.js";
 
 // ---------------------------------------------------------------------------
 // JSONL fixture helpers — minimal representations of what Claude Code writes
@@ -28,6 +30,21 @@ function assistantEntry(text: string, cwd = "/tmp/proj"): string {
 function resultEntry(): string {
   return JSON.stringify({ type: "result", source: "stop-hook" }) + "\n";
 }
+
+// Fixture derived from the real "What kind of tests do we have in place" response
+// that failed to reach Telegram (the /clear session rotation bug).
+const TABLE_RESPONSE = `The project has 10 test files in \`src/\`:
+
+| File | What it tests |
+|---|---|
+| \`src/config/config.test.ts\` | Configuration loading/validation |
+| \`src/session/history.test.ts\` | Session history management |
+| \`src/session/monitor.test.ts\` | Session monitoring |
+| \`src/session/tmux.test.ts\` | tmux integration |
+| \`src/agent/loop.test.ts\` | Agent loop logic |
+| \`src/telegram/bot.test.ts\` | Telegram bot core |
+
+**Test framework: Vitest** (\`vitest run\` / \`vitest\` for watch mode)`;
 
 // ---------------------------------------------------------------------------
 // Scenario: user does /clear then sends a message
@@ -101,5 +118,81 @@ describe("scenario: /clear then new message", () => {
     expect(received.length).toBeGreaterThan(0);
     expect(received[received.length - 1].text).toContain("10 test files");
     expect(completed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario: response containing a markdown table is detected and rendered
+//
+// Verifies the full pipeline from raw JSONL text → watchForResponse fires →
+// splitAtTables detects the table → renderTableAsPng produces a valid PNG.
+// Derived from the real "What kind of tests do we have in place" response that
+// first exposed the table-rendering problem.
+// ---------------------------------------------------------------------------
+
+describe("scenario: response with table is detected and rendered as PNG", () => {
+  let projectDir: string;
+
+  afterEach(async () => {
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it("watchForResponse delivers text that splitAtTables splits into text+table parts, each renderable", async () => {
+    const testId = Date.now();
+    const fakeCwd = `/cv-scenario-table-${testId}`;
+    const encodedCwd = fakeCwd.replace(/[^a-zA-Z0-9]/g, "-");
+    projectDir = join(PROJECTS_PATH, encodedCwd);
+    await mkdir(projectDir, { recursive: true });
+
+    const sessionFile = join(projectDir, "session-table.jsonl");
+    await writeFile(sessionFile, "");
+    const baseline = await getFileSize(sessionFile);
+
+    // Collect the delivered response text
+    const received: SessionResponseState[] = [];
+    let completed = false;
+    const stop = watchForResponse(
+      sessionFile,
+      baseline,
+      async (state) => { received.push(state); },
+      undefined,
+      () => { completed = true; },
+    );
+
+    // Simulate Claude Code writing the fixture response (table included)
+    await new Promise((r) => setTimeout(r, 50));
+    await appendFile(sessionFile, assistantEntry(TABLE_RESPONSE));
+    await new Promise((r) => setTimeout(r, 50));
+    await appendFile(sessionFile, resultEntry());
+
+    // Wait for completion
+    await new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        if (completed) { clearInterval(interval); resolve(); }
+      }, 50);
+      setTimeout(() => { clearInterval(interval); resolve(); }, 3000);
+    });
+    stop();
+
+    expect(completed).toBe(true);
+    expect(received.length).toBeGreaterThan(0);
+
+    const responseText = received[received.length - 1].text;
+
+    // splitAtTables must find exactly one table part and two text parts
+    const parts = splitAtTables(responseText);
+    const tableParts = parts.filter((p) => p.type === "table");
+    const textParts = parts.filter((p) => p.type === "text");
+    expect(tableParts).toHaveLength(1);
+    expect(textParts).toHaveLength(2); // intro text + trailing bold line
+
+    // The table part must render to a valid PNG
+    const tableLines = (tableParts[0] as { type: "table"; lines: string[] }).lines;
+    const png = renderTableAsPng(tableLines);
+    expect(png[0]).toBe(0x89); // PNG magic bytes
+    expect(png[1]).toBe(0x50); // P
+    expect(png[2]).toBe(0x4e); // N
+    expect(png[3]).toBe(0x47); // G
+    expect(png.length).toBeGreaterThan(1000);
   });
 });
