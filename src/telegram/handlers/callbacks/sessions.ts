@@ -1,5 +1,4 @@
 import { type Context, InlineKeyboard } from "grammy";
-import { clearChatState } from "../../../agent/loop.js";
 import { ATTACHED_SESSION_PATH } from "../../../session/history.js";
 import { findClaudePane } from "../../../session/tmux.js";
 import { pendingSessions, setLaunchedPaneId } from "../sessions.js";
@@ -20,7 +19,6 @@ export async function handleSessionCallback(ctx: Context, data: string): Promise
     await mkdir(`${homedir()}/.codewhispr`, { recursive: true });
     await writeFile(ATTACHED_SESSION_PATH, `${session.sessionId}\n${session.cwd}`, "utf8");
     setLaunchedPaneId(undefined);
-    clearChatState(ctx.chat!.id);
     await ctx.answerCallbackQuery({ text: "Attached!" });
     await ctx.reply(`Attached to \`${session.projectName}\`. Send your first message.`, {
       parse_mode: "Markdown",

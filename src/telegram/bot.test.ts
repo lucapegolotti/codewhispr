@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createBot } from "./bot.js";
-import { findClaudePane, listTmuxPanes, isClaudePane, launchClaudeInWindow, killWindow, sendKeysToPane } from "../session/tmux.js";
+import { findClaudePane, listTmuxPanes, isClaudePane, launchClaudeInWindow, killWindow, sendKeysToPane, injectInput } from "../session/tmux.js";
 import { getAttachedSession, listSessions, getLatestSessionFileForCwd, readSessionLines, parseJsonlLines } from "../session/history.js";
-import { handleTurn, clearChatState } from "../agent/loop.js";
 import { unlink, writeFile } from "fs/promises";
 import { watchForResponse, getFileSize } from "../session/monitor.js";
 import { isServiceInstalled } from "../service/index.js";
@@ -25,11 +24,6 @@ vi.mock("../session/history.js", () => ({
   getLatestSessionFileForCwd: vi.fn(),
   readSessionLines: vi.fn().mockResolvedValue([]),
   parseJsonlLines: vi.fn().mockReturnValue({ lastMessage: "", cwd: "", toolCalls: [], allMessages: [] }),
-}));
-
-vi.mock("../agent/loop.js", () => ({
-  handleTurn: vi.fn(),
-  clearChatState: vi.fn(),
 }));
 
 vi.mock("../session/monitor.js", () => ({
@@ -195,14 +189,14 @@ describe("e2e: /clear then question — watchForResponse called on new session f
     // question goes through processTextTurn → getLatestSessionFileForCwd must return new session
     vi.mocked(getLatestSessionFileForCwd).mockResolvedValue(NEW_SESSION);
     vi.mocked(getFileSize).mockResolvedValue(0);
-    vi.mocked(handleTurn).mockResolvedValue("__INJECTED__");
+    vi.mocked(injectInput).mockResolvedValue({ found: true, paneId: "%1" });
   });
 
   afterEach(() => {
     // mockReset clears implementations AND once-queues; vi.clearAllMocks() does not.
     // This prevents leftover state from leaking into subsequent describe blocks.
     vi.mocked(getLatestSessionFileForCwd).mockReset();
-    vi.mocked(handleTurn).mockReset();
+    vi.mocked(injectInput).mockReset();
     vi.mocked(getAttachedSession).mockReset();
     vi.mocked(findClaudePane).mockReset();
   });

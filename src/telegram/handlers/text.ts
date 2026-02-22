@@ -1,12 +1,11 @@
 import { Context } from "grammy";
-import { handleTurn, clearChatState } from "../../agent/loop.js";
 import { log } from "../../logger.js";
 import { ATTACHED_SESSION_PATH, getAttachedSession, listSessions, getLatestSessionFileForCwd } from "../../session/history.js";
 import { watchForResponse, getFileSize } from "../../session/monitor.js";
 import { notifyResponse, notifyImages, sendPing } from "../notifications.js";
 import { sendMarkdownReply } from "../utils.js";
-import { sendSessionPicker, launchedPaneId } from "./sessions.js";
-import { findClaudePane, sendInterrupt } from "../../session/tmux.js";
+import { launchedPaneId } from "./sessions.js";
+import { findClaudePane, sendInterrupt, injectInput } from "../../session/tmux.js";
 import type { SessionResponseState, DetectedImage } from "../../session/monitor.js";
 import { pendingImages, pendingImageCount, clearPendingImageCount } from "./callbacks/index.js";
 import { InputFile } from "grammy";
@@ -94,7 +93,6 @@ export async function ensureSession(
   const s = recent[0];
   await mkdir(`${homedir()}/.codewhispr`, { recursive: true });
   await writeFile(ATTACHED_SESSION_PATH, `${s.sessionId}\n${s.cwd}`, "utf8");
-  clearChatState(chatId);
   await ctx.reply(`Auto-attached to \`${s.projectName}\`.`, { parse_mode: "Markdown" });
   return { sessionId: s.sessionId, cwd: s.cwd };
 }
@@ -143,29 +141,26 @@ export async function processTextTurn(ctx: Context, chatId: number, text: string
     }
   }
 
+  if (!attached) {
+    await sendMarkdownReply(ctx, "No session attached. Use /sessions to pick one.");
+    return;
+  }
+
   // Snapshot file position BEFORE injection — avoids missing fast responses where
   // Claude writes to the JSONL before startInjectionWatcher reads the file size.
-  const preBaseline = attached ? await watcherManager.snapshotBaseline(attached.cwd) : null;
-  const reply = await handleTurn(chatId, text, undefined, attached?.cwd, launchedPaneId);
+  const preBaseline = await watcherManager.snapshotBaseline(attached.cwd);
 
-  if (reply === "__SESSION_PICKER__") {
-    await sendSessionPicker(ctx);
+  log({ chatId, message: `inject: ${text.slice(0, 80)}` });
+  const result = await injectInput(attached.cwd, text, launchedPaneId);
+
+  if (!result.found) {
+    await sendMarkdownReply(ctx, "No Claude Code running at this session. Start it, or use /sessions to switch.");
     return;
   }
 
-  if (reply === "__INJECTED__") {
-    await ctx.replyWithChatAction("typing");
-    const typingInterval = setInterval(() => {
-      ctx.replyWithChatAction("typing").catch(() => {});
-    }, 4000);
-    if (attached) {
-      await watcherManager.startInjectionWatcher(attached, chatId, undefined, () => clearInterval(typingInterval), preBaseline);
-    } else {
-      clearInterval(typingInterval);
-    }
-    return;
-  }
-
-  log({ chatId, direction: "out", message: reply });
-  await sendMarkdownReply(ctx, reply);
+  await ctx.replyWithChatAction("typing");
+  const typingInterval = setInterval(() => {
+    ctx.replyWithChatAction("typing").catch(() => {});
+  }, 4000);
+  await watcherManager.startInjectionWatcher(attached, chatId, undefined, () => clearInterval(typingInterval), preBaseline);
 }

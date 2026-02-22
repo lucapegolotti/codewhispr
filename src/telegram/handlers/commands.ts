@@ -1,5 +1,4 @@
 import { Bot, InlineKeyboard } from "grammy";
-import { clearChatState } from "../../agent/loop.js";
 import { log } from "../../logger.js";
 import { ATTACHED_SESSION_PATH, getAttachedSession, listSessions } from "../../session/history.js";
 import { findClaudePane, sendKeysToPane, killWindow } from "../../session/tmux.js";
@@ -192,7 +191,6 @@ export function registerCommands(bot: Bot): void {
 
     // Always detach immediately
     try { await unlink(ATTACHED_SESSION_PATH); } catch { /* already gone */ }
-    clearChatState(ctx.chat.id);
     clearActiveWatcher();
 
     if (pane?.found) {
@@ -215,7 +213,6 @@ export function registerCommands(bot: Bot): void {
     const pane = await findClaudePane(attached.cwd).catch(() => ({ found: false as const, reason: "no_tmux" as const }));
 
     try { await unlink(ATTACHED_SESSION_PATH); } catch { /* already gone */ }
-    clearChatState(ctx.chat.id);
     clearActiveWatcher();
 
     if (pane.found) {

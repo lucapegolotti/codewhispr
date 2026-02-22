@@ -43,7 +43,6 @@ const TABLE_RESPONSE = `The project has 10 test files in \`src/\`:
 | \`src/session/history.test.ts\` | Session history management |
 | \`src/session/monitor.test.ts\` | Session monitoring |
 | \`src/session/tmux.test.ts\` | tmux integration |
-| \`src/agent/loop.test.ts\` | Agent loop logic |
 | \`src/telegram/bot.test.ts\` | Telegram bot core |
 
 **Test framework: Vitest** (\`vitest run\` / \`vitest\` for watch mode)`;
