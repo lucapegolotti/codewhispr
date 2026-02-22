@@ -177,20 +177,21 @@ export async function getSessionFilePath(sessionId: string): Promise<string | nu
   return null;
 }
 
-// Returns true if the JSONL file contains at least one assistant message.
-// Files that only contain file-history-snapshot entries are not real session files.
-async function hasAssistantMessages(filePath: string): Promise<boolean> {
+// Returns true if the file has non-empty content but no assistant messages.
+// Used to skip metadata-only files (e.g. file-history-snapshot entries written at
+// Claude Code startup). Empty files (fresh sessions after /clear) are not skipped.
+async function hasOnlyNonAssistantContent(filePath: string): Promise<boolean> {
   try {
     const content = await readFile(filePath, "utf8");
-    return content.includes('"type":"assistant"');
+    return content.trim().length > 0 && !content.includes('"type":"assistant"');
   } catch {
     return false;
   }
 }
 
 // Returns the most recently modified session JSONL for the given working directory.
-// Prefers files that contain actual conversation data (assistant messages) over
-// metadata-only files (e.g. file-history-snapshot entries created at startup).
+// Skips metadata-only files (e.g. file-history-snapshot entries written at startup)
+// but accepts empty files — a fresh empty file is a valid new session (e.g. after /clear).
 // Used when the attached session ID may be stale (e.g. Claude Code restarted and
 // created a new session UUID while the bot was still watching the old one).
 export async function getLatestSessionFileForCwd(
@@ -224,16 +225,17 @@ export async function getLatestSessionFileForCwd(
   // Sort by mtime descending
   entries.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
-  // Prefer the most recently modified file that has actual conversation content.
-  // Fall back to the most recently modified file if none have assistant messages.
+  // Skip files that have content but no assistant messages (e.g. file-history-snapshot
+  // entries written at Claude Code startup). Empty files (fresh session after /clear)
+  // and files with assistant messages are both valid — return the most recent of those.
   for (const entry of entries) {
     const filePath = `${projectDir}/${entry.file}`;
-    if (await hasAssistantMessages(filePath)) {
+    if (!await hasOnlyNonAssistantContent(filePath)) {
       return { filePath, sessionId: entry.file.replace(".jsonl", "") };
     }
   }
 
-  // No conversation files found — return most recent (new session not yet responded to)
+  // All files are metadata-only — fall back to most recently modified
   const best = entries[0];
   return {
     filePath: `${projectDir}/${best.file}`,

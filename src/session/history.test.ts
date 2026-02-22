@@ -192,6 +192,21 @@ describe("getLatestSessionFileForCwd", () => {
     expect(result).toBeNull();
   });
 
+  it("returns the empty file (fresh session after /clear) over an older file with assistant messages", async () => {
+    setupProjectDir(`clear-session-${Date.now()}`);
+    await mkdir(projectDir, { recursive: true });
+
+    // Write older session with conversation history
+    await writeFile(join(projectDir, "session-old.jsonl"), assistantJsonl("Previous response"));
+    await new Promise((r) => setTimeout(r, 20)); // ensure distinct mtime
+    // Write newer empty session (as created by /clear)
+    await writeFile(join(projectDir, "session-new.jsonl"), "");
+
+    const result = await getLatestSessionFileForCwd(fakeCwd);
+    expect(result).not.toBeNull();
+    expect(result!.sessionId).toBe("session-new");
+  });
+
   it("when multiple files have assistant messages, returns the most recently modified one", async () => {
     setupProjectDir(`multi-assistant-${Date.now()}`);
     await mkdir(projectDir, { recursive: true });

@@ -15,6 +15,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
     "@anthropic-ai/sdk": "latest",
+    "@napi-rs/canvas": "^0.1.94",
     "chokidar": "^5.0.0",
     "grammy": "latest",
     "ink": "latest",
