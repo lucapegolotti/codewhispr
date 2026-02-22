@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { writeFile, appendFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { classifyWaitingType, WaitingType, getFileSize, watchForResponse } from "./monitor.js";
+import { classifyWaitingType, parseMultipleChoices, WaitingType, getFileSize, watchForResponse } from "./monitor.js";
 import type { SessionResponseState } from "./monitor.js";
 
 describe("classifyWaitingType", () => {
@@ -32,6 +32,40 @@ describe("classifyWaitingType", () => {
 
   it("detects confirm prompt", () => {
     expect(classifyWaitingType("Are you sure you want to proceed? Confirm?")).toBe(WaitingType.YES_NO);
+  });
+});
+
+describe("parseMultipleChoices", () => {
+  const PLAN_APPROVAL_PANE = `
+Claude has written up a plan and is ready to execute. Would you like to proceed?
+> 1. Yes, clear context (21% used) and bypass permissions
+  2. Yes, and bypass permissions
+  3. Yes, manually approve edits
+  4. Type here to tell Claude what to change
+ctrl-g to edit in Vim · ~/.claude/plans/hazy-purring-fog.md
+`;
+
+  it("extracts choices from a plan approval pane", () => {
+    const choices = parseMultipleChoices(PLAN_APPROVAL_PANE);
+    expect(choices).toEqual([
+      "Yes, clear context (21% used) and bypass permissions",
+      "Yes, and bypass permissions",
+      "Yes, manually approve edits",
+      "Type here to tell Claude what to change",
+    ]);
+  });
+
+  it("returns null when fewer than 2 numbered items are found", () => {
+    expect(parseMultipleChoices("Some text\n1. Only one item\nMore text")).toBeNull();
+  });
+
+  it("returns null when numbering does not start from 1", () => {
+    const text = "  2. First item\n  3. Second item\n  4. Third item";
+    expect(parseMultipleChoices(text)).toBeNull();
+  });
+
+  it("returns null for plain text with no numbered list", () => {
+    expect(parseMultipleChoices("I have updated the migration file.")).toBeNull();
   });
 });
 

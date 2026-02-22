@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { sendStartupMessage, registerForNotifications, notifyResponse, notifyPermission } from "./notifications.js";
+import { sendStartupMessage, registerForNotifications, notifyResponse, notifyPermission, notifyWaiting, resolveWaitingAction } from "./notifications.js";
+import { WaitingType } from "../session/monitor.js";
 import { splitMessage } from "./utils.js";
 
 vi.mock("fs/promises", () => ({
@@ -67,6 +68,25 @@ describe("registerForNotifications", () => {
       "12345",
       "utf8"
     );
+  });
+});
+
+describe("resolveWaitingAction", () => {
+  it("resolves yes/no/enter actions", () => {
+    expect(resolveWaitingAction("waiting:yes")).toBe("y");
+    expect(resolveWaitingAction("waiting:no")).toBe("n");
+    expect(resolveWaitingAction("waiting:enter")).toBe("");
+  });
+
+  it("resolves numbered choice actions", () => {
+    expect(resolveWaitingAction("waiting:choice:1")).toBe("1");
+    expect(resolveWaitingAction("waiting:choice:3")).toBe("3");
+  });
+
+  it("returns null for unknown actions", () => {
+    expect(resolveWaitingAction("waiting:custom")).toBeNull();
+    expect(resolveWaitingAction("waiting:ignore")).toBeNull();
+    expect(resolveWaitingAction("something:else")).toBeNull();
   });
 });
 
@@ -249,5 +269,73 @@ describe("notifyPermission", () => {
     const denyButton = allButtons.find((b) => b.callback_data === "perm:deny:req-123");
     expect(approveButton).toBeDefined();
     expect(denyButton).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// notifyWaiting — MULTIPLE_CHOICE
+// ---------------------------------------------------------------------------
+
+describe("notifyWaiting with MULTIPLE_CHOICE", () => {
+  const chatId = 12345;
+  let mockBot: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockBot = { api: { sendMessage: vi.fn().mockResolvedValue({}) } };
+    registerForNotifications(mockBot, chatId);
+  });
+
+  const makeState = (choices: string[]) => ({
+    sessionId: "session-abc",
+    projectName: "myproject",
+    cwd: "/proj",
+    filePath: "/path/to/session.jsonl",
+    waitingType: WaitingType.MULTIPLE_CHOICE,
+    prompt: "❓ Claude Code needs your approval for the plan",
+    choices,
+  });
+
+  it("sends one inline button per choice with waiting:choice:N callback data", async () => {
+    const choices = [
+      "Yes, clear context (21% used) and bypass permissions",
+      "Yes, and bypass permissions",
+      "Yes, manually approve edits",
+      "Type here to tell Claude what to change",
+    ];
+
+    await notifyWaiting(makeState(choices));
+
+    const call = mockBot.api.sendMessage.mock.calls[0];
+    const keyboard = call[2]?.reply_markup?.inline_keyboard as Array<Array<{ text: string; callback_data: string }>>;
+    expect(keyboard).toBeDefined();
+    const allButtons = keyboard.flat();
+
+    expect(allButtons.find((b) => b.callback_data === "waiting:choice:1")).toBeDefined();
+    expect(allButtons.find((b) => b.callback_data === "waiting:choice:2")).toBeDefined();
+    expect(allButtons.find((b) => b.callback_data === "waiting:choice:3")).toBeDefined();
+    expect(allButtons.find((b) => b.callback_data === "waiting:choice:4")).toBeDefined();
+  });
+
+  it("truncates long choice labels to 40 chars with ellipsis", async () => {
+    const longChoice = "Yes, clear context (21% used) and bypass permissions"; // > 40 chars
+    await notifyWaiting(makeState([longChoice, "Short option"]));
+
+    const call = mockBot.api.sendMessage.mock.calls[0];
+    const keyboard = call[2]?.reply_markup?.inline_keyboard as Array<Array<{ text: string; callback_data: string }>>;
+    const allButtons = keyboard.flat();
+    const btn1 = allButtons.find((b) => b.callback_data === "waiting:choice:1");
+    expect(btn1?.text).toMatch(/…$/);
+    expect(btn1?.text.length).toBeLessThanOrEqual(45); // "1. " prefix + 40 chars + "…"
+  });
+
+  it("always includes Send custom input and Ignore buttons", async () => {
+    await notifyWaiting(makeState(["Option A", "Option B"]));
+
+    const call = mockBot.api.sendMessage.mock.calls[0];
+    const keyboard = call[2]?.reply_markup?.inline_keyboard as Array<Array<{ text: string; callback_data: string }>>;
+    const allButtons = keyboard.flat();
+    expect(allButtons.find((b) => b.callback_data === "waiting:custom")).toBeDefined();
+    expect(allButtons.find((b) => b.callback_data === "waiting:ignore")).toBeDefined();
   });
 });

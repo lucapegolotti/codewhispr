@@ -167,3 +167,8 @@ export async function killWindow(target: string): Promise<void> {
   // tmux resolves a pane or window target to the containing window
   await execAsync(`tmux kill-window -t '${target}'`);
 }
+
+export async function capturePaneContent(paneId: string): Promise<string> {
+  const { stdout } = await execAsync(`tmux capture-pane -p -t '${paneId}'`);
+  return stdout;
+}

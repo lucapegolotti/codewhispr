@@ -47,12 +47,17 @@ export async function sendStartupMessage(bot: Bot): Promise<void> {
   }
 }
 
-function buildWaitingKeyboard(waitingType: WaitingType): InlineKeyboard {
+function buildWaitingKeyboard(waitingType: WaitingType, choices?: string[]): InlineKeyboard {
   const kb = new InlineKeyboard();
   if (waitingType === WaitingType.YES_NO) {
     kb.text("Yes", "waiting:yes").text("No", "waiting:no").row();
   } else if (waitingType === WaitingType.ENTER) {
     kb.text("Continue ↩", "waiting:enter").row();
+  } else if (waitingType === WaitingType.MULTIPLE_CHOICE && choices) {
+    for (let i = 0; i < choices.length; i++) {
+      const label = choices[i].length > 40 ? choices[i].slice(0, 38) + "…" : choices[i];
+      kb.text(`${i + 1}. ${label}`, `waiting:choice:${i + 1}`).row();
+    }
   }
   kb.text("Send custom input", "waiting:custom").text("Ignore", "waiting:ignore");
   return kb;
@@ -63,7 +68,7 @@ export async function notifyWaiting(state: SessionWaitingState): Promise<void> {
 
   const prompt = state.prompt.slice(0, 200);
   const text = `⚠️ Claude is waiting in \`${state.projectName}\`:\n\n_"${prompt}"_`;
-  const keyboard = buildWaitingKeyboard(state.waitingType);
+  const keyboard = buildWaitingKeyboard(state.waitingType, state.choices);
 
   try {
     await registeredBot.api.sendMessage(registeredChatId, text, {
@@ -143,5 +148,8 @@ export function resolveWaitingAction(callbackData: string): string | null {
     "waiting:no": "n",
     "waiting:enter": "",
   };
-  return callbackData in map ? map[callbackData] : null;
+  if (callbackData in map) return map[callbackData];
+  const choiceMatch = callbackData.match(/^waiting:choice:(\d+)$/);
+  if (choiceMatch) return choiceMatch[1];
+  return null;
 }

@@ -2,10 +2,12 @@ import chokidar from "chokidar";
 import { readFile, stat } from "fs/promises";
 import { PROJECTS_PATH } from "./history.js";
 import { log } from "../logger.js";
+import { findClaudePane, capturePaneContent } from "./tmux.js";
 
 export enum WaitingType {
   YES_NO = "YES_NO",
   ENTER = "ENTER",
+  MULTIPLE_CHOICE = "MULTIPLE_CHOICE",
 }
 
 export type SessionWaitingState = {
@@ -15,6 +17,7 @@ export type SessionWaitingState = {
   filePath: string;
   waitingType: WaitingType;
   prompt: string;
+  choices?: string[];
 };
 
 export type WaitingCallback = (state: SessionWaitingState) => Promise<void>;
@@ -42,6 +45,18 @@ export function classifyWaitingType(text: string): WaitingType | null {
   if (ENTER_PATTERNS.some((p) => p.test(trimmed))) return WaitingType.ENTER;
 
   return null;
+}
+
+// Extract numbered choices from a tmux pane capture.
+// Matches lines like "> 1. Some option" or "  2. Another option"
+// Returns the choice labels if at least 2 are found, otherwise null.
+export function parseMultipleChoices(paneContent: string): string[] | null {
+  const matches = [...paneContent.matchAll(/^[\s>]*(\d+)\.\s+(.+)$/gm)];
+  if (matches.length < 2) return null;
+  // Verify indices are sequential starting from 1
+  const indices = matches.map((m) => parseInt(m[1], 10));
+  if (indices[0] !== 1) return null;
+  return matches.map((m) => m[2].trim());
 }
 
 function decodeProjectName(dir: string): string {
@@ -141,6 +156,30 @@ export function startMonitor(onWaiting: WaitingCallback): () => void {
         await onWaiting({ sessionId, projectName, cwd, filePath, waitingType, prompt: lastText }).catch(
           (err) => log({ message: `notification error: ${err instanceof Error ? err.message : String(err)}` })
         );
+      } else {
+        // Try to detect a multiple-choice prompt from the terminal pane content.
+        // Claude Code's plan approval and similar UIs render numbered options that
+        // don't match the simple y/n or Enter patterns above.
+        try {
+          const pane = await findClaudePane(cwd);
+          if (pane.found) {
+            const paneText = await capturePaneContent(pane.paneId);
+            const choices = parseMultipleChoices(paneText);
+            if (choices) {
+              log({ message: `session ${sessionId.slice(0, 8)} waiting (MULTIPLE_CHOICE): ${choices.length} choices` });
+              await onWaiting({
+                sessionId, projectName, cwd, filePath,
+                waitingType: WaitingType.MULTIPLE_CHOICE,
+                prompt: lastText,
+                choices,
+              }).catch(
+                (err) => log({ message: `notification error: ${err instanceof Error ? err.message : String(err)}` })
+              );
+            }
+          }
+        } catch {
+          // tmux not available or pane not found — skip
+        }
       }
     }, DEBOUNCE_MS);
 
