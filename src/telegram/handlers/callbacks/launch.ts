@@ -1,5 +1,4 @@
 import type { Bot, Context } from "grammy";
-import { clearChatState } from "../../../agent/loop.js";
 import { log } from "../../../logger.js";
 import { ATTACHED_SESSION_PATH } from "../../../session/history.js";
 import { findClaudePane, launchClaudeInWindow } from "../../../session/tmux.js";
@@ -37,7 +36,6 @@ export async function handleLaunchCallback(ctx: Context, data: string, bot: Bot)
   await mkdir(`${homedir()}/.codewhispr`, { recursive: true });
   await writeFile(ATTACHED_SESSION_PATH, `${session.sessionId}\n${session.cwd}`, "utf8");
   setLaunchedPaneId(paneId);
-  clearChatState(ctx.chat!.id);
 
   await ctx.answerCallbackQuery({ text: "Launched!" });
   const flag = skipPermissions ? " with `--dangerously-skip-permissions`" : "";
