@@ -6,7 +6,7 @@ import { findClaudePane, sendKeysToPane, killWindow } from "../../session/tmux.j
 import { summarizeSession } from "../../agent/summarizer.js";
 import { sendMarkdownReply } from "../utils.js";
 import { sendSessionPicker } from "./sessions.js";
-import { clearActiveWatcher, activeWatcherStop, fetchAndOfferImages } from "./text.js";
+import { clearActiveWatcher, watcherManager, fetchAndOfferImages } from "./text.js";
 import { unlink, writeFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
@@ -237,7 +237,7 @@ export function registerCommands(bot: Bot): void {
     const sessions = await listSessions(20);
     const info = sessions.find((s) => s.sessionId === attached.sessionId);
     const project = info?.projectName ?? attached.sessionId.slice(0, 8);
-    const watcherState = activeWatcherStop ? "⏳ active" : "✅ idle";
+    const watcherState = watcherManager.isActive ? "⏳ active" : "✅ idle";
     await ctx.reply(
       `\`${project}\` · \`${attached.cwd}\` · watcher: ${watcherState}`,
       { parse_mode: "Markdown" }
