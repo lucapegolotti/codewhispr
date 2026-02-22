@@ -2,6 +2,7 @@ import chokidar from "chokidar";
 import { readFile, stat } from "fs/promises";
 import { PROJECTS_PATH } from "./history.js";
 import { log } from "../logger.js";
+import { parseAssistantText, extractCwd, findResultEvent, findExitPlanMode, extractWrittenImagePaths } from "./jsonl.js";
 
 export enum WaitingType {
   YES_NO = "YES_NO",
@@ -61,44 +62,8 @@ export async function getLastAssistantEntry(filePath: string): Promise<{
   try {
     const content = await readFile(filePath, "utf8");
     const lines = content.trim().split("\n").filter(Boolean);
-
-    let text: string | null = null;
-    let hasExitPlanMode = false;
-    let planText: string | null = null;
-
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        const entry = JSON.parse(lines[i]);
-        // Stop at the user/human turn boundary
-        if (entry.type === "user") break;
-        if (entry.type !== "assistant") continue;
-
-        const blocks: { type: string; name?: string; text?: string; input?: unknown }[] =
-          entry.message?.content ?? [];
-
-        if (!hasExitPlanMode) {
-          const exitBlock = blocks.find(
-            (c) => c.type === "tool_use" && c.name === "ExitPlanMode"
-          );
-          if (exitBlock) {
-            hasExitPlanMode = true;
-            planText = (exitBlock.input as Record<string, unknown> | undefined)?.plan as string ?? null;
-          }
-        }
-
-        if (text === null) {
-          const textBlocks = blocks.filter((c) => c.type === "text");
-          if (textBlocks.length > 0) {
-            text = textBlocks[textBlocks.length - 1].text ?? null;
-          }
-        }
-
-        if (text !== null && hasExitPlanMode) break;
-      } catch {
-        continue;
-      }
-    }
-
+    const { text } = parseAssistantText(lines);
+    const { found: hasExitPlanMode, planText } = findExitPlanMode(lines);
     return { text, hasExitPlanMode, planText };
   } catch {
     // file unreadable
@@ -156,18 +121,8 @@ export function startMonitor(onWaiting: WaitingCallback, watchPath: string = PRO
       let cwd = "";
       try {
         const content = await readFile(filePath, "utf8");
-        const lines = content.trim().split("\n").filter(Boolean);
-        for (const line of lines) {
-          try {
-            const entry = JSON.parse(line);
-            if (entry.type === "assistant" && entry.cwd) {
-              cwd = entry.cwd;
-              break;
-            }
-          } catch {
-            continue;
-          }
-        }
+        const allLines = content.trim().split("\n").filter(Boolean);
+        cwd = extractCwd(allLines) ?? "";
       } catch {
         // ignore
       }
@@ -272,58 +227,20 @@ export function watchForResponse(
         const lines = newContent.split("\n").filter(Boolean);
 
         // Find the latest assistant text written so far
-        let latestText: string | null = null;
-        let latestCwd = cwd;
-        let latestModel: string | undefined;
-        for (let i = lines.length - 1; i >= 0; i--) {
-          try {
-            const entry = JSON.parse(lines[i]);
-            if (entry.type !== "assistant") continue;
-            const textBlocks = (entry.message?.content ?? []).filter(
-              (c: { type: string }) => c.type === "text"
-            );
-            if (textBlocks.length === 0) continue;
-            const text: string = textBlocks[textBlocks.length - 1].text;
-            if (!text.trim()) continue;
-            latestText = text;
-            if (entry.cwd) latestCwd = entry.cwd;
-            if (entry.message?.model) latestModel = entry.message.model;
-            break;
-          } catch {
-            continue;
-          }
-        }
+        const parsed = parseAssistantText(lines);
+        const latestText = parsed.text;
+        const latestCwd = parsed.cwd ?? cwd;
+        const latestModel = parsed.model;
 
-        // Collect images from tool_result blocks (deduplicated by tool_use_id + image index)
+        // Collect image files written via the Write tool
         if (onImages) {
-          // Detect image files written via the Write tool
-          for (const line of lines) {
-            try {
-              const entry = JSON.parse(line);
-              if (entry.type !== "assistant") continue;
-              const content: unknown[] = entry.message?.content ?? [];
-              for (const block of content) {
-                if (typeof block !== "object" || block === null) continue;
-                const b = block as Record<string, unknown>;
-                if (b["type"] !== "tool_use" || b["name"] !== "Write") continue;
-                const input = b["input"] as Record<string, unknown> | undefined;
-                const fp = input?.["file_path"] as string | undefined;
-                if (fp && /\.(png|jpg|jpeg|gif|webp)$/i.test(fp)) {
-                  writtenImagePaths.add(fp);
-                }
-              }
-            } catch { continue; }
+          for (const fp of extractWrittenImagePaths(lines)) {
+            writtenImagePaths.add(fp);
           }
         }
 
         // Detect Claude Code turn completion via the result event (written by Stop hook)
-        const isComplete = lines.some((line) => {
-          try {
-            return JSON.parse(line).type === "result";
-          } catch {
-            return false;
-          }
-        });
+        const isComplete = findResultEvent(lines);
 
         if (isComplete && !completionScheduled) {
           completionScheduled = true;
@@ -347,29 +264,11 @@ export function watchForResponse(
             try {
               const finalBuf = await readFile(filePath);
               const finalLines = finalBuf.subarray(baselineSize).toString("utf8").split("\n").filter(Boolean);
-              let finalText: string | null = null;
-              let finalCwd = cwd;
-              let finalModel: string | undefined;
-              for (let i = finalLines.length - 1; i >= 0; i--) {
-                try {
-                  const entry = JSON.parse(finalLines[i]);
-                  if (entry.type !== "assistant") continue;
-                  const textBlocks = (entry.message?.content ?? []).filter(
-                    (c: { type: string }) => c.type === "text"
-                  );
-                  if (textBlocks.length === 0) continue;
-                  const text: string = textBlocks[textBlocks.length - 1].text;
-                  if (!text.trim()) continue;
-                  finalText = text;
-                  if (entry.cwd) finalCwd = entry.cwd;
-                  if (entry.message?.model) finalModel = entry.message.model;
-                  break;
-                } catch { continue; }
-              }
-              if (finalText && finalText !== lastSentText) {
-                lastSentText = finalText;
-                log({ message: `watchForResponse final-flush for session ${sessionId.slice(0, 8)}: ${finalText.slice(0, 60)}` });
-                await onResponse({ sessionId, projectName, cwd: finalCwd, filePath, text: finalText, model: finalModel }).catch(
+              const final = parseAssistantText(finalLines);
+              if (final.text && final.text !== lastSentText) {
+                lastSentText = final.text;
+                log({ message: `watchForResponse final-flush for session ${sessionId.slice(0, 8)}: ${final.text.slice(0, 60)}` });
+                await onResponse({ sessionId, projectName, cwd: final.cwd ?? cwd, filePath, text: final.text, model: final.model }).catch(
                   (err) => log({ message: `watchForResponse callback error: ${err instanceof Error ? err.message : String(err)}` })
                 );
               }
