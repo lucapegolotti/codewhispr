@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createBot } from "./bot.js";
-import { findClaudePane, listTmuxPanes, isClaudePane, launchClaudeInWindow, killWindow } from "../session/tmux.js";
+import { findClaudePane, listTmuxPanes, isClaudePane, launchClaudeInWindow, killWindow, sendKeysToPane } from "../session/tmux.js";
 import { getAttachedSession, listSessions, getLatestSessionFileForCwd, readSessionLines, parseJsonlLines } from "../session/history.js";
 import { handleTurn, clearChatState } from "../agent/loop.js";
 import { unlink, writeFile } from "fs/promises";
 import { watchForResponse, getFileSize } from "../session/monitor.js";
+import { isServiceInstalled } from "../service/index.js";
 
 vi.mock("../session/tmux.js", () => ({
   findClaudePane: vi.fn(),
@@ -64,6 +65,14 @@ vi.mock("../narrator.js", () => ({
 
 vi.mock("../logger.js", () => ({
   log: vi.fn(),
+}));
+
+vi.mock("../service/index.js", () => ({
+  isServiceInstalled: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock("child_process", () => ({
+  spawn: vi.fn().mockReturnValue({ unref: vi.fn() }),
 }));
 
 vi.mock("fs/promises", () => ({
@@ -489,5 +498,147 @@ describe("/restart command", () => {
     await bot.handleUpdate(commandUpdate("/restart") as any);
     const texts = apiCalls.filter((c) => c.method === "sendMessage").map((c) => c.payload.text as string);
     expect(texts.some((t) => /restart/i.test(t))).toBe(true);
+  });
+
+  it("persists chat-id before replying", async () => {
+    const { bot } = await makeBot();
+    await bot.handleUpdate(commandUpdate("/restart", 99999) as any);
+    expect(writeFile).toHaveBeenCalledWith(
+      expect.stringContaining("chat-id"),
+      "99999",
+      "utf8"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /model command
+// ---------------------------------------------------------------------------
+
+describe("/model command", () => {
+  const originalApiKey = process.env.ANTHROPIC_API_KEY;
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (originalApiKey !== undefined) {
+      process.env.ANTHROPIC_API_KEY = originalApiKey;
+    } else {
+      delete process.env.ANTHROPIC_API_KEY;
+    }
+  });
+
+  // Run no-key test first — cache starts null, stays null (fetchModels returns [] without setting cache)
+  it("shows fallback keyboard when ANTHROPIC_API_KEY is unset", async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const { bot, apiCalls } = await makeBot();
+    await bot.handleUpdate(commandUpdate("/model") as any);
+
+    const sends = apiCalls.filter((c) => c.method === "sendMessage");
+    expect(sends.length).toBeGreaterThan(0);
+    const keyboard = sends[0].payload.reply_markup as any;
+    const labels = keyboard.inline_keyboard.flat().map((b: any) => b.text);
+    expect(labels).toContain("Default (Sonnet)");
+    expect(labels).toContain("Opus 4.6");
+    expect(labels).toContain("Sonnet 4.6");
+    expect(labels).toContain("Haiku 4.5");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // Cache still null — fetch rejects → returns []
+  it("shows fallback keyboard when API fetch fails", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchSpy.mockRejectedValue(new Error("network error"));
+
+    const { bot, apiCalls } = await makeBot();
+    await bot.handleUpdate(commandUpdate("/model") as any);
+
+    const sends = apiCalls.filter((c) => c.method === "sendMessage");
+    const keyboard = sends[0].payload.reply_markup as any;
+    const labels = keyboard.inline_keyboard.flat().map((b: any) => b.text);
+    expect(labels).toContain("Default (Sonnet)");
+    expect(labels).toContain("Opus 4.6");
+  });
+
+  // This test populates the cache — runs last in this describe block
+  it("shows API models when fetch succeeds", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchSpy.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          { id: "claude-opus-4-6", display_name: "Claude Opus 4.6" },
+          { id: "claude-sonnet-4-6", display_name: "Claude Sonnet 4.6" },
+        ],
+      }),
+    });
+
+    const { bot, apiCalls } = await makeBot();
+    await bot.handleUpdate(commandUpdate("/model") as any);
+
+    const sends = apiCalls.filter((c) => c.method === "sendMessage");
+    const keyboard = sends[0].payload.reply_markup as any;
+    const labels = keyboard.inline_keyboard.flat().map((b: any) => b.text);
+    expect(labels).toContain("Default (Sonnet)");
+    expect(labels).toContain("Claude Opus 4.6");
+    expect(labels).toContain("Claude Sonnet 4.6");
+    // Should NOT have the hardcoded fallbacks
+    expect(labels).not.toContain("Haiku 4.5");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// model: callbacks
+// ---------------------------------------------------------------------------
+
+describe("model: callbacks", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sends /model command to tmux pane on happy path", async () => {
+    const { bot, apiCalls } = await makeBot();
+
+    vi.mocked(getAttachedSession).mockResolvedValue({ sessionId: "s1", cwd: "/proj" });
+    vi.mocked(findClaudePane).mockResolvedValue({ found: true, paneId: "%3" });
+
+    await bot.handleUpdate(callbackUpdate("model:claude-opus-4-6") as any);
+
+    expect(sendKeysToPane).toHaveBeenCalledWith("%3", "/model claude-opus-4-6");
+    const answers = apiCalls.filter((c) => c.method === "answerCallbackQuery");
+    expect(answers.some((c) => c.payload.text === "Switched to claude-opus-4-6")).toBe(true);
+    const edits = apiCalls.filter((c) => c.method === "editMessageText");
+    expect(edits.some((c) => (c.payload.text as string).includes("claude-opus-4-6"))).toBe(true);
+  });
+
+  it("answers with error when no session is attached", async () => {
+    const { bot, apiCalls } = await makeBot();
+
+    vi.mocked(getAttachedSession).mockResolvedValue(null);
+
+    await bot.handleUpdate(callbackUpdate("model:claude-opus-4-6") as any);
+
+    const answers = apiCalls.filter((c) => c.method === "answerCallbackQuery");
+    expect(answers.some((c) => c.payload.text === "No session attached.")).toBe(true);
+    expect(sendKeysToPane).not.toHaveBeenCalled();
+  });
+
+  it("answers with error when no tmux pane is found", async () => {
+    const { bot, apiCalls } = await makeBot();
+
+    vi.mocked(getAttachedSession).mockResolvedValue({ sessionId: "s1", cwd: "/proj" });
+    vi.mocked(findClaudePane).mockResolvedValue({ found: false, reason: "no_claude_pane" });
+
+    await bot.handleUpdate(callbackUpdate("model:claude-opus-4-6") as any);
+
+    const answers = apiCalls.filter((c) => c.method === "answerCallbackQuery");
+    expect(answers.some((c) => c.payload.text === "Could not find the Claude Code tmux pane.")).toBe(true);
+    expect(sendKeysToPane).not.toHaveBeenCalled();
   });
 });
