@@ -2,10 +2,105 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join, dirname } from "path";
 
-const HOOK_SCRIPT_PATH = join(homedir(), ".claude", "hooks", "codewhispr-stop.sh");
 const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
 
-const HOOK_SCRIPT = `#!/bin/bash
+// ---------------------------------------------------------------------------
+// HookSpec — defines a hook script and where it gets registered in settings.json
+// ---------------------------------------------------------------------------
+
+type HookSpec = {
+  /** The hook event group in settings.json (e.g. "Stop", "Notification") */
+  hookEvent: string;
+  /** Optional matcher value for the group entry */
+  matcher: string;
+  /** Absolute path where the shell script is written */
+  scriptPath: string;
+  /** The shell script content */
+  scriptContent: string;
+  /** Unique substring in scriptPath used to detect if already installed */
+  searchString: string;
+  /** How to add to an existing settings group: "append-first" adds to the
+   *  first existing group, "new-group" always creates a new group entry,
+   *  "find-or-create" finds a group with the same matcher or creates one. */
+  addStrategy: "append-first" | "new-group" | "find-or-create";
+};
+
+type HookGroup = { matcher?: string; hooks: { type: string; command: string }[] };
+
+// ---------------------------------------------------------------------------
+// Generic helpers
+// ---------------------------------------------------------------------------
+
+async function readSettings(): Promise<Record<string, unknown>> {
+  try {
+    return JSON.parse(await readFile(CLAUDE_SETTINGS_PATH, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+async function writeSettings(settings: Record<string, unknown>): Promise<void> {
+  await mkdir(dirname(CLAUDE_SETTINGS_PATH), { recursive: true });
+  await writeFile(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", "utf8");
+}
+
+function isSpecInstalled(settings: Record<string, unknown>, spec: HookSpec): boolean {
+  const groups: HookGroup[] = (settings as Record<string, Record<string, HookGroup[]>>)
+    ?.hooks?.[spec.hookEvent] ?? [];
+  return groups.some((g) => g.hooks?.some((h) => h.command?.includes(spec.searchString)));
+}
+
+async function installSpec(spec: HookSpec): Promise<void> {
+  // Write the hook script
+  await mkdir(dirname(spec.scriptPath), { recursive: true });
+  await writeFile(spec.scriptPath, spec.scriptContent, { mode: 0o755 });
+}
+
+function addSpecToSettings(settings: Record<string, unknown>, spec: HookSpec): void {
+  if (!settings.hooks) settings.hooks = {};
+  const hooks = settings.hooks as Record<string, HookGroup[]>;
+  if (!hooks[spec.hookEvent]) hooks[spec.hookEvent] = [];
+  const groups = hooks[spec.hookEvent];
+
+  if (isSpecInstalled(settings, spec)) return;
+
+  const entry = { type: "command" as const, command: spec.scriptPath };
+
+  switch (spec.addStrategy) {
+    case "append-first":
+      if (groups.length > 0) {
+        groups[0].hooks.push(entry);
+      } else {
+        groups.push({ matcher: spec.matcher, hooks: [entry] });
+      }
+      break;
+    case "find-or-create": {
+      const existing = groups.find((g) => g.matcher === spec.matcher);
+      if (existing) {
+        existing.hooks.push(entry);
+      } else {
+        groups.push({ matcher: spec.matcher, hooks: [entry] });
+      }
+      break;
+    }
+    case "new-group":
+    default:
+      groups.push({ matcher: spec.matcher, hooks: [entry] });
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hook definitions
+// ---------------------------------------------------------------------------
+
+const STOP_HOOK: HookSpec = {
+  hookEvent: "Stop",
+  matcher: "",
+  scriptPath: join(homedir(), ".claude", "hooks", "codewhispr-stop.sh"),
+  searchString: "codewhispr-stop",
+  addStrategy: "append-first",
+  scriptContent: `#!/bin/bash
 # Signals codewhispr bot that Claude has finished a turn.
 # Appends a result event to the session JSONL so the bot's watcher
 # can fire the voice narration without relying on a silence timeout.
@@ -23,11 +118,29 @@ if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
 fi
 
 exit 0
+`,
+};
+
+// Shared helper used by both compact hooks to send a Telegram notification.
+const COMPACT_HOOK_COMMON = `
+CODEWHISPR_DIR="$HOME/.codewhispr"
+TOKEN=$(cat "$CODEWHISPR_DIR/bot-token" 2>/dev/null)
+CHAT_ID=$(cat "$CODEWHISPR_DIR/chat-id" 2>/dev/null)
+[ -z "$TOKEN" ] || [ -z "$CHAT_ID" ] && exit 0
+
+# Only notify for the currently attached session (match by cwd)
+ATTACHED_CWD=$(sed -n '2p' "$CODEWHISPR_DIR/attached" 2>/dev/null)
+HOOK_CWD=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null)
+[ -n "$ATTACHED_CWD" ] && [ "$HOOK_CWD" != "$ATTACHED_CWD" ] && exit 0
 `;
 
-const PERMISSION_HOOK_SCRIPT_PATH = join(homedir(), ".claude", "hooks", "codewhispr-permission.sh");
-
-const PERMISSION_HOOK_SCRIPT = `#!/bin/bash
+const PERMISSION_HOOK: HookSpec = {
+  hookEvent: "Notification",
+  matcher: "permission_prompt",
+  scriptPath: join(homedir(), ".claude", "hooks", "codewhispr-permission.sh"),
+  searchString: "codewhispr-permission",
+  addStrategy: "find-or-create",
+  scriptContent: `#!/bin/bash
 # Forwards Claude Code tool permission requests to the codewhispr Telegram bot.
 # Waits for the user to approve or deny via Telegram, then exits accordingly.
 # Clarifying questions (no matching tool name) are ignored — they arrive via the
@@ -89,25 +202,16 @@ done
 
 rm -f "$REQUEST_FILE"
 exit 0
-`;
+`,
+};
 
-const COMPACT_START_HOOK_PATH = join(homedir(), ".claude", "hooks", "codewhispr-compact-start.sh");
-const COMPACT_END_HOOK_PATH = join(homedir(), ".claude", "hooks", "codewhispr-compact-end.sh");
-
-// Shared helper used by both compact hooks to send a Telegram notification.
-const COMPACT_HOOK_COMMON = `
-CODEWHISPR_DIR="$HOME/.codewhispr"
-TOKEN=$(cat "$CODEWHISPR_DIR/bot-token" 2>/dev/null)
-CHAT_ID=$(cat "$CODEWHISPR_DIR/chat-id" 2>/dev/null)
-[ -z "$TOKEN" ] || [ -z "$CHAT_ID" ] && exit 0
-
-# Only notify for the currently attached session (match by cwd)
-ATTACHED_CWD=$(sed -n '2p' "$CODEWHISPR_DIR/attached" 2>/dev/null)
-HOOK_CWD=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null)
-[ -n "$ATTACHED_CWD" ] && [ "$HOOK_CWD" != "$ATTACHED_CWD" ] && exit 0
-`;
-
-const COMPACT_START_HOOK_SCRIPT = `#!/bin/bash
+const COMPACT_START_HOOK: HookSpec = {
+  hookEvent: "PreCompact",
+  matcher: "manual",
+  scriptPath: join(homedir(), ".claude", "hooks", "codewhispr-compact-start.sh"),
+  searchString: "codewhispr-compact-start",
+  addStrategy: "new-group",
+  scriptContent: `#!/bin/bash
 # Notifies the codewhispr Telegram bot when context compaction begins.
 INPUT=$(cat)
 ${COMPACT_HOOK_COMMON}
@@ -115,9 +219,16 @@ curl -s -X POST "https://api.telegram.org/bot\${TOKEN}/sendMessage" \\
   --data-urlencode "chat_id=$CHAT_ID" \\
   --data-urlencode "text=⏳ Compacting context..." > /dev/null 2>&1
 exit 0
-`;
+`,
+};
 
-const COMPACT_END_HOOK_SCRIPT = `#!/bin/bash
+const COMPACT_END_HOOK: HookSpec = {
+  hookEvent: "SessionStart",
+  matcher: "compact",
+  scriptPath: join(homedir(), ".claude", "hooks", "codewhispr-compact-end.sh"),
+  searchString: "codewhispr-compact-end",
+  addStrategy: "new-group",
+  scriptContent: `#!/bin/bash
 # Notifies the codewhispr Telegram bot when context compaction finishes.
 # Fires via SessionStart with source=compact (Claude Code restarts the session after compaction).
 INPUT=$(cat)
@@ -128,162 +239,44 @@ curl -s -X POST "https://api.telegram.org/bot\${TOKEN}/sendMessage" \\
   --data-urlencode "chat_id=$CHAT_ID" \\
   --data-urlencode "text=✅ Compact complete." > /dev/null 2>&1
 exit 0
-`;
+`,
+};
 
-export async function isCompactHooksInstalled(): Promise<boolean> {
-  try {
-    const raw = await readFile(CLAUDE_SETTINGS_PATH, "utf8");
-    const settings = JSON.parse(raw);
-    const preCompactGroups: { hooks?: { command?: string }[] }[] = settings?.hooks?.PreCompact ?? [];
-    return preCompactGroups.some((group) =>
-      group.hooks?.some((h) => h.command?.includes("codewhispr-compact-start"))
-    );
-  } catch {
-    return false;
-  }
-}
-
-export async function installCompactHooks(): Promise<void> {
-  await mkdir(dirname(COMPACT_START_HOOK_PATH), { recursive: true });
-  await writeFile(COMPACT_START_HOOK_PATH, COMPACT_START_HOOK_SCRIPT, { mode: 0o755 });
-  await writeFile(COMPACT_END_HOOK_PATH, COMPACT_END_HOOK_SCRIPT, { mode: 0o755 });
-
-  let settings: Record<string, unknown> = {};
-  try {
-    settings = JSON.parse(await readFile(CLAUDE_SETTINGS_PATH, "utf8"));
-  } catch {
-    // File may not exist yet
-  }
-
-  if (!settings.hooks) settings.hooks = {};
-  const hooks = settings.hooks as Record<string, unknown[]>;
-
-  // PreCompact hook — fires when /compact begins
-  if (!hooks.PreCompact) hooks.PreCompact = [];
-  type HookGroup = { matcher?: string; hooks: { type: string; command: string }[] };
-  const preCompactGroups = hooks.PreCompact as HookGroup[];
-  const preAlreadyInstalled = preCompactGroups.some((g) =>
-    g.hooks?.some((h) => h.command?.includes("codewhispr-compact-start"))
-  );
-  if (!preAlreadyInstalled) {
-    preCompactGroups.push({
-      matcher: "manual",
-      hooks: [{ type: "command", command: COMPACT_START_HOOK_PATH }],
-    });
-  }
-
-  // SessionStart hook — fires when the session restarts after compaction completes
-  if (!hooks.SessionStart) hooks.SessionStart = [];
-  const sessionStartGroups = hooks.SessionStart as HookGroup[];
-  const sessionAlreadyInstalled = sessionStartGroups.some((g) =>
-    g.hooks?.some((h) => h.command?.includes("codewhispr-compact-end"))
-  );
-  if (!sessionAlreadyInstalled) {
-    sessionStartGroups.push({
-      matcher: "compact",
-      hooks: [{ type: "command", command: COMPACT_END_HOOK_PATH }],
-    });
-  }
-
-  await mkdir(dirname(CLAUDE_SETTINGS_PATH), { recursive: true });
-  await writeFile(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", "utf8");
-}
-
-export async function isPermissionHookInstalled(): Promise<boolean> {
-  try {
-    const raw = await readFile(CLAUDE_SETTINGS_PATH, "utf8");
-    const settings = JSON.parse(raw);
-    const notifGroups: { hooks?: { command?: string }[] }[] = settings?.hooks?.Notification ?? [];
-    return notifGroups.some((group) =>
-      group.hooks?.some((h) => h.command?.includes("codewhispr-permission"))
-    );
-  } catch {
-    return false;
-  }
-}
-
-export async function installPermissionHook(): Promise<void> {
-  await mkdir(dirname(PERMISSION_HOOK_SCRIPT_PATH), { recursive: true });
-  await writeFile(PERMISSION_HOOK_SCRIPT_PATH, PERMISSION_HOOK_SCRIPT, { mode: 0o755 });
-
-  let settings: Record<string, unknown> = {};
-  try {
-    settings = JSON.parse(await readFile(CLAUDE_SETTINGS_PATH, "utf8"));
-  } catch {
-    // File may not exist yet
-  }
-
-  if (!settings.hooks) settings.hooks = {};
-  const hooks = settings.hooks as Record<string, unknown[]>;
-  if (!hooks.Notification) hooks.Notification = [];
-
-  type NotifGroup = { matcher?: string; hooks: { type: string; command: string }[] };
-  const notifGroups = hooks.Notification as NotifGroup[];
-
-  const alreadyInstalled = notifGroups.some((g) =>
-    g.hooks?.some((h) => h.command?.includes("codewhispr-permission"))
-  );
-
-  if (!alreadyInstalled) {
-    const permGroup = notifGroups.find((g) => g.matcher === "permission_prompt");
-    if (permGroup) {
-      permGroup.hooks.push({ type: "command", command: PERMISSION_HOOK_SCRIPT_PATH });
-    } else {
-      notifGroups.push({
-        matcher: "permission_prompt",
-        hooks: [{ type: "command", command: PERMISSION_HOOK_SCRIPT_PATH }],
-      });
-    }
-  }
-
-  await mkdir(dirname(CLAUDE_SETTINGS_PATH), { recursive: true });
-  await writeFile(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", "utf8");
-}
+// ---------------------------------------------------------------------------
+// Public API — unchanged signatures
+// ---------------------------------------------------------------------------
 
 export async function isHookInstalled(): Promise<boolean> {
-  try {
-    const raw = await readFile(CLAUDE_SETTINGS_PATH, "utf8");
-    const settings = JSON.parse(raw);
-    const stopGroups: { hooks?: { command?: string }[] }[] = settings?.hooks?.Stop ?? [];
-    return stopGroups.some((group) =>
-      group.hooks?.some((h) => h.command?.includes("codewhispr-stop"))
-    );
-  } catch {
-    return false;
-  }
+  return isSpecInstalled(await readSettings(), STOP_HOOK);
 }
 
 export async function installHook(): Promise<void> {
-  // Write the hook script
-  await mkdir(dirname(HOOK_SCRIPT_PATH), { recursive: true });
-  await writeFile(HOOK_SCRIPT_PATH, HOOK_SCRIPT, { mode: 0o755 });
+  await installSpec(STOP_HOOK);
+  const settings = await readSettings();
+  addSpecToSettings(settings, STOP_HOOK);
+  await writeSettings(settings);
+}
 
-  // Update ~/.claude/settings.json
-  let settings: Record<string, unknown> = {};
-  try {
-    settings = JSON.parse(await readFile(CLAUDE_SETTINGS_PATH, "utf8"));
-  } catch {
-    // File may not exist yet
-  }
+export async function isPermissionHookInstalled(): Promise<boolean> {
+  return isSpecInstalled(await readSettings(), PERMISSION_HOOK);
+}
 
-  if (!settings.hooks) settings.hooks = {};
-  const hooks = settings.hooks as Record<string, unknown[]>;
-  if (!hooks.Stop) hooks.Stop = [];
+export async function installPermissionHook(): Promise<void> {
+  await installSpec(PERMISSION_HOOK);
+  const settings = await readSettings();
+  addSpecToSettings(settings, PERMISSION_HOOK);
+  await writeSettings(settings);
+}
 
-  const stopGroups = hooks.Stop as { matcher?: string; hooks: { type: string; command: string }[] }[];
-  const alreadyInstalled = stopGroups.some((g) =>
-    g.hooks?.some((h) => h.command?.includes("codewhispr-stop"))
-  );
+export async function isCompactHooksInstalled(): Promise<boolean> {
+  return isSpecInstalled(await readSettings(), COMPACT_START_HOOK);
+}
 
-  if (!alreadyInstalled) {
-    if (stopGroups.length > 0) {
-      // Add to the existing first group alongside other Stop hooks
-      stopGroups[0].hooks.push({ type: "command", command: HOOK_SCRIPT_PATH });
-    } else {
-      stopGroups.push({ matcher: "", hooks: [{ type: "command", command: HOOK_SCRIPT_PATH }] });
-    }
-  }
-
-  await mkdir(dirname(CLAUDE_SETTINGS_PATH), { recursive: true });
-  await writeFile(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", "utf8");
+export async function installCompactHooks(): Promise<void> {
+  await installSpec(COMPACT_START_HOOK);
+  await installSpec(COMPACT_END_HOOK);
+  const settings = await readSettings();
+  addSpecToSettings(settings, COMPACT_START_HOOK);
+  addSpecToSettings(settings, COMPACT_END_HOOK);
+  await writeSettings(settings);
 }
