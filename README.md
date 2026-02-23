@@ -1,6 +1,12 @@
 # codedove
 
-[![CI](https://github.com/lucapegolotti/codedove/actions/workflows/ci.yml/badge.svg)](https://github.com/lucapegolotti/codedove/actions/workflows/ci.yml)
+<p align="center">
+  <a href="https://github.com/lucapegolotti/codedove/actions/workflows/ci.yml"><img src="https://github.com/lucapegolotti/codedove/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/lucapegolotti/codedove/main/.github/badges/coverage.json" alt="Coverage">
+  <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node >= 20">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue" alt="Platform">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+</p>
 
 > Control Claude Code from your phone via Telegram — text, voice, or image.
 
