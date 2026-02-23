@@ -92,7 +92,7 @@ export async function ensureSession(
   if (recent.length === 0) return null;
 
   const s = recent[0];
-  await mkdir(`${homedir()}/.codewhispr`, { recursive: true });
+  await mkdir(`${homedir()}/.codedove`, { recursive: true });
   await writeFile(ATTACHED_SESSION_PATH, `${s.sessionId}\n${s.cwd}`, "utf8");
   await ctx.reply(`Auto-attached to \`${s.projectName}\`.`, { parse_mode: "Markdown" });
   return { sessionId: s.sessionId, cwd: s.cwd };

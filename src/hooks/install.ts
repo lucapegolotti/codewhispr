@@ -97,11 +97,11 @@ function addSpecToSettings(settings: Record<string, unknown>, spec: HookSpec): v
 const STOP_HOOK: HookSpec = {
   hookEvent: "Stop",
   matcher: "",
-  scriptPath: join(homedir(), ".claude", "hooks", "codewhispr-stop.sh"),
-  searchString: "codewhispr-stop",
+  scriptPath: join(homedir(), ".claude", "hooks", "codedove-stop.sh"),
+  searchString: "codedove-stop",
   addStrategy: "append-first",
   scriptContent: `#!/bin/bash
-# Signals codewhispr bot that Claude has finished a turn.
+# Signals codedove bot that Claude has finished a turn.
 # Appends a result event to the session JSONL so the bot's watcher
 # can fire the voice narration without relying on a silence timeout.
 
@@ -123,13 +123,13 @@ exit 0
 
 // Shared helper used by both compact hooks to send a Telegram notification.
 const COMPACT_HOOK_COMMON = `
-CODEWHISPR_DIR="$HOME/.codewhispr"
-TOKEN=$(cat "$CODEWHISPR_DIR/bot-token" 2>/dev/null)
-CHAT_ID=$(cat "$CODEWHISPR_DIR/chat-id" 2>/dev/null)
+CODEDOVE_DIR="$HOME/.codedove"
+TOKEN=$(cat "$CODEDOVE_DIR/bot-token" 2>/dev/null)
+CHAT_ID=$(cat "$CODEDOVE_DIR/chat-id" 2>/dev/null)
 [ -z "$TOKEN" ] || [ -z "$CHAT_ID" ] && exit 0
 
 # Only notify for the currently attached session (match by cwd)
-ATTACHED_CWD=$(sed -n '2p' "$CODEWHISPR_DIR/attached" 2>/dev/null)
+ATTACHED_CWD=$(sed -n '2p' "$CODEDOVE_DIR/attached" 2>/dev/null)
 HOOK_CWD=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null)
 [ -n "$ATTACHED_CWD" ] && [ "$HOOK_CWD" != "$ATTACHED_CWD" ] && exit 0
 `;
@@ -137,17 +137,17 @@ HOOK_CWD=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdi
 const PERMISSION_HOOK: HookSpec = {
   hookEvent: "Notification",
   matcher: "permission_prompt",
-  scriptPath: join(homedir(), ".claude", "hooks", "codewhispr-permission.sh"),
-  searchString: "codewhispr-permission",
+  scriptPath: join(homedir(), ".claude", "hooks", "codedove-permission.sh"),
+  searchString: "codedove-permission",
   addStrategy: "find-or-create",
   scriptContent: `#!/bin/bash
-# Forwards Claude Code tool permission requests to the codewhispr Telegram bot.
+# Forwards Claude Code tool permission requests to the codedove Telegram bot.
 # Waits for the user to approve or deny via Telegram, then exits accordingly.
 # Clarifying questions (no matching tool name) are ignored — they arrive via the
 # normal JSONL text path and the user replies by sending a message in Telegram.
 
-CODEWHISPR_DIR="$HOME/.codewhispr"
-mkdir -p "$CODEWHISPR_DIR"
+CODEDOVE_DIR="$HOME/.codedove"
+mkdir -p "$CODEDOVE_DIR"
 
 INPUT=$(cat)
 
@@ -174,8 +174,8 @@ print(d.get('message', json.dumps(d)))
 TRANSCRIPT_PATH=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('transcript_path',''))" 2>/dev/null || echo "")
 
 REQUEST_ID=$(python3 -c "import uuid; print(str(uuid.uuid4()))")
-REQUEST_FILE="$CODEWHISPR_DIR/permission-request-\${REQUEST_ID}.json"
-RESPONSE_FILE="$CODEWHISPR_DIR/permission-response-\${REQUEST_ID}"
+REQUEST_FILE="$CODEDOVE_DIR/permission-request-\${REQUEST_ID}.json"
+RESPONSE_FILE="$CODEDOVE_DIR/permission-response-\${REQUEST_ID}"
 
 python3 -c "
 import json, sys
@@ -208,11 +208,11 @@ exit 0
 const COMPACT_START_HOOK: HookSpec = {
   hookEvent: "PreCompact",
   matcher: "manual",
-  scriptPath: join(homedir(), ".claude", "hooks", "codewhispr-compact-start.sh"),
-  searchString: "codewhispr-compact-start",
+  scriptPath: join(homedir(), ".claude", "hooks", "codedove-compact-start.sh"),
+  searchString: "codedove-compact-start",
   addStrategy: "new-group",
   scriptContent: `#!/bin/bash
-# Notifies the codewhispr Telegram bot when context compaction begins.
+# Notifies the codedove Telegram bot when context compaction begins.
 INPUT=$(cat)
 ${COMPACT_HOOK_COMMON}
 curl -s -X POST "https://api.telegram.org/bot\${TOKEN}/sendMessage" \\
@@ -225,11 +225,11 @@ exit 0
 const COMPACT_END_HOOK: HookSpec = {
   hookEvent: "SessionStart",
   matcher: "compact",
-  scriptPath: join(homedir(), ".claude", "hooks", "codewhispr-compact-end.sh"),
-  searchString: "codewhispr-compact-end",
+  scriptPath: join(homedir(), ".claude", "hooks", "codedove-compact-end.sh"),
+  searchString: "codedove-compact-end",
   addStrategy: "new-group",
   scriptContent: `#!/bin/bash
-# Notifies the codewhispr Telegram bot when context compaction finishes.
+# Notifies the codedove Telegram bot when context compaction finishes.
 # Fires via SessionStart with source=compact (Claude Code restarts the session after compaction).
 INPUT=$(cat)
 SOURCE=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('source',''))" 2>/dev/null)

@@ -1,9 +1,9 @@
 {
-  "name": "codewhispr",
+  "name": "codedove",
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "codewhispr": "bin/codewhispr"
+    "codedove": "bin/codedove"
   },
   "scripts": {
     "start": "tsx src/index.ts",

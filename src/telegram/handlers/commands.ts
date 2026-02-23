@@ -55,7 +55,7 @@ async function fetchModels(): Promise<AnthropicModel[]> {
   }
 }
 
-const POLISH_VOICE_OFF_PATH = join(homedir(), ".codewhispr", "polish-voice-off");
+const POLISH_VOICE_OFF_PATH = join(homedir(), ".codedove", "polish-voice-off");
 
 export const BOT_COMMANDS: Array<{ command: string; description: string; details: string }> = [
   {
@@ -161,7 +161,7 @@ export function registerCommands(bot: Bot): void {
   bot.command("polishvoice", async (ctx) => {
     const enabled = await isVoicePolishEnabled();
     if (enabled) {
-      await mkdir(join(homedir(), ".codewhispr"), { recursive: true });
+      await mkdir(join(homedir(), ".codedove"), { recursive: true });
       await writeFile(POLISH_VOICE_OFF_PATH, "", "utf8");
       await ctx.reply("Voice polish *off*. Raw Whisper transcripts will be injected.", { parse_mode: "Markdown" });
     } else {
@@ -296,7 +296,7 @@ export function registerCommands(bot: Bot): void {
 
   bot.command("restart", async (ctx) => {
     // Persist chat-id before exiting so sendStartupMessage can confirm the restart.
-    const chatIdDir = join(homedir(), ".codewhispr");
+    const chatIdDir = join(homedir(), ".codedove");
     await mkdir(chatIdDir, { recursive: true });
     await writeFile(join(chatIdDir, "chat-id"), String(ctx.chat.id), "utf8").catch(() => {});
     await ctx.reply("Restarting…").catch(() => {});
@@ -321,7 +321,7 @@ export function registerCommands(bot: Bot): void {
 
   const escMd = (s: string) => s.replace(/[_*[\]()~`>#+=|{}.!\\-]/g, "\\$&");
   const HELP_TEXT = [
-    "*codewhispr commands*",
+    "*codedove commands*",
     "",
     ...BOT_COMMANDS.flatMap(({ command, details }) => [
       `*/${command.replace(/_/g, "\\_")}*`,

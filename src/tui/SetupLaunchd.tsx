@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // The bot entry point (runs src/index.ts, not the TUI)
-const CODEWHISPR_BIN = resolve(__dirname, "..", "..", "bin", "codewhispr-bot");
+const CODEDOVE_BIN = resolve(__dirname, "..", "..", "bin", "codedove-bot");
 
 const isMac = process.platform === "darwin";
 const serviceLabel = isMac ? "macOS launch agent" : "systemd user service";
@@ -20,7 +20,7 @@ export function SetupLaunchd({ onComplete }: Props) {
     if (state !== "prompt") return;
     if (input === "y" || input === "Y") {
       setState("installing");
-      await installService(CODEWHISPR_BIN).catch(() => {});
+      await installService(CODEDOVE_BIN).catch(() => {});
       setState("done");
       setTimeout(onComplete, 1000);
     }

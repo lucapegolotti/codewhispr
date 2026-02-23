@@ -5,7 +5,7 @@ import { join } from "path";
 import { log } from "../logger.js";
 import { findLastToolUse } from "./jsonl.js";
 
-const CODEWHISPR_DIR = join(homedir(), ".codewhispr");
+const CODEDOVE_DIR = join(homedir(), ".codedove");
 
 export type PermissionRequest = {
   requestId: string;
@@ -29,7 +29,7 @@ async function extractToolCommand(transcriptPath: string, toolName: string): Pro
 export function watchPermissionRequests(
   onRequest: (req: PermissionRequest) => Promise<void>
 ): () => void {
-  const watcher = chokidar.watch(CODEWHISPR_DIR, {
+  const watcher = chokidar.watch(CODEDOVE_DIR, {
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 100 },
@@ -69,8 +69,8 @@ export function watchPermissionRequests(
 }
 
 export async function respondToPermission(requestId: string, action: "approve" | "deny"): Promise<void> {
-  await mkdir(CODEWHISPR_DIR, { recursive: true });
-  const responsePath = join(CODEWHISPR_DIR, `permission-response-${requestId}`);
+  await mkdir(CODEDOVE_DIR, { recursive: true });
+  const responsePath = join(CODEDOVE_DIR, `permission-response-${requestId}`);
   await writeFile(responsePath, action, "utf8");
   log({ message: `permission response: ${action} (${requestId.slice(0, 8)})` });
 }

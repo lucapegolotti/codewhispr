@@ -31,7 +31,7 @@ describe("sendStartupMessage", () => {
 
     expect(mockBot.api.sendMessage).toHaveBeenCalledWith(
       50620969,
-      expect.stringContaining("codewhispr"),
+      expect.stringContaining("codedove"),
       expect.anything()
     );
   });

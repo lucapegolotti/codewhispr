@@ -16,7 +16,7 @@ export async function handleSessionCallback(ctx: Context, data: string): Promise
   const pane = await findClaudePane(session.cwd).catch(() => ({ found: false as const, reason: "no_tmux" as const }));
 
   if (pane.found) {
-    await mkdir(`${homedir()}/.codewhispr`, { recursive: true });
+    await mkdir(`${homedir()}/.codedove`, { recursive: true });
     await writeFile(ATTACHED_SESSION_PATH, `${session.sessionId}\n${session.cwd}`, "utf8");
     setLaunchedPaneId(undefined);
     await ctx.answerCallbackQuery({ text: "Attached!" });

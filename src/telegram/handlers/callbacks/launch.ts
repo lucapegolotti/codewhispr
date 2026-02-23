@@ -33,7 +33,7 @@ export async function handleLaunchCallback(ctx: Context, data: string, bot: Bot)
     return;
   }
 
-  await mkdir(`${homedir()}/.codewhispr`, { recursive: true });
+  await mkdir(`${homedir()}/.codedove`, { recursive: true });
   await writeFile(ATTACHED_SESSION_PATH, `${session.sessionId}\n${session.cwd}`, "utf8");
   setLaunchedPaneId(paneId);
 

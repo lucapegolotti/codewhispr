@@ -8,11 +8,11 @@ const execAsync = promisify(execFile);
 const isMac = process.platform === "darwin";
 
 // macOS
-const PLIST_PATH = join(homedir(), "Library", "LaunchAgents", "com.codewhispr.bot.plist");
-const SERVICE_LABEL = "com.codewhispr.bot";
+const PLIST_PATH = join(homedir(), "Library", "LaunchAgents", "com.codedove.bot.plist");
+const SERVICE_LABEL = "com.codedove.bot";
 
 // Linux
-const SERVICE_UNIT = "codewhispr.service";
+const SERVICE_UNIT = "codedove.service";
 const SYSTEMD_PATH = join(homedir(), ".config", "systemd", "user", SERVICE_UNIT);
 
 export const SERVICE_FILE_PATH = isMac ? PLIST_PATH : SYSTEMD_PATH;
@@ -78,9 +78,9 @@ function buildPlist(executablePath: string): string {
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>${join(homedir(), ".codewhispr", "bot.log")}</string>
+  <string>${join(homedir(), ".codedove", "bot.log")}</string>
   <key>StandardErrorPath</key>
-  <string>${join(homedir(), ".codewhispr", "bot.err")}</string>
+  <string>${join(homedir(), ".codedove", "bot.err")}</string>
 </dict>
 </plist>
 `;
@@ -88,13 +88,13 @@ function buildPlist(executablePath: string): string {
 
 function buildSystemdUnit(executablePath: string): string {
   return `[Unit]
-Description=codewhispr Telegram bot
+Description=codedove Telegram bot
 
 [Service]
 ExecStart=${executablePath}
 Restart=always
-StandardOutput=append:${join(homedir(), ".codewhispr", "bot.log")}
-StandardError=append:${join(homedir(), ".codewhispr", "bot.err")}
+StandardOutput=append:${join(homedir(), ".codedove", "bot.log")}
+StandardError=append:${join(homedir(), ".codedove", "bot.err")}
 
 [Install]
 WantedBy=default.target

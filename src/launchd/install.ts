@@ -6,8 +6,8 @@ import { promisify } from "util";
 
 const execAsync = promisify(execFile);
 
-export const PLIST_PATH = join(homedir(), "Library", "LaunchAgents", "com.codewhispr.bot.plist");
-export const SERVICE_LABEL = "com.codewhispr.bot";
+export const PLIST_PATH = join(homedir(), "Library", "LaunchAgents", "com.codedove.bot.plist");
+export const SERVICE_LABEL = "com.codedove.bot";
 
 function buildPlist(executablePath: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -25,9 +25,9 @@ function buildPlist(executablePath: string): string {
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>${join(homedir(), ".codewhispr", "bot.log")}</string>
+  <string>${join(homedir(), ".codedove", "bot.log")}</string>
   <key>StandardErrorPath</key>
-  <string>${join(homedir(), ".codewhispr", "bot.err")}</string>
+  <string>${join(homedir(), ".codedove", "bot.err")}</string>
 </dict>
 </plist>
 `;

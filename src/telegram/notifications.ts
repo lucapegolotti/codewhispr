@@ -8,8 +8,8 @@ import { homedir } from "os";
 import { join } from "path";
 import { sendMarkdownMessage } from "./utils.js";
 
-const CODEWHISPR_DIR = join(homedir(), ".codewhispr");
-const CHAT_ID_PATH = join(CODEWHISPR_DIR, "chat-id");
+const CODEDOVE_DIR = join(homedir(), ".codedove");
+const CHAT_ID_PATH = join(CODEDOVE_DIR, "chat-id");
 
 // Plan approval text is handled by notifyWaiting — skip here to avoid sending
 // a buttonless duplicate before the proper waiting notification arrives.
@@ -38,7 +38,7 @@ export class NotificationService {
   register(bot: Bot, chatId: number): void {
     this.bot = bot;
     this.chatId = chatId;
-    mkdir(CODEWHISPR_DIR, { recursive: true })
+    mkdir(CODEDOVE_DIR, { recursive: true })
       .then(() => writeFile(CHAT_ID_PATH, String(chatId), "utf8"))
       .catch(() => {});
   }
@@ -175,9 +175,9 @@ export async function sendStartupMessage(bot: Bot): Promise<void> {
     ? `Attached: \`${attached.sessionId.slice(0, 8)}…\``
     : "No session attached — use /sessions to pick one.";
   try {
-    await bot.api.sendMessage(chatId, `codewhispr started\\. ${sessionMsg}`, { parse_mode: "MarkdownV2" });
+    await bot.api.sendMessage(chatId, `codedove started\\. ${sessionMsg}`, { parse_mode: "MarkdownV2" });
   } catch {
-    await bot.api.sendMessage(chatId, `codewhispr started. ${attached ? "Attached: " + attached.sessionId.slice(0, 8) : "No session attached."}`).catch(() => {});
+    await bot.api.sendMessage(chatId, `codedove started. ${attached ? "Attached: " + attached.sessionId.slice(0, 8) : "No session attached."}`).catch(() => {});
   }
 }
 

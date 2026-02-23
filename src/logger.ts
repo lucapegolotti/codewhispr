@@ -9,7 +9,7 @@ export type LogEntry = {
   message: string;
 };
 
-const LOG_DIR = `${homedir()}/.codewhispr`;
+const LOG_DIR = `${homedir()}/.codedove`;
 const LOG_PATH = `${LOG_DIR}/bot.log`;
 
 mkdirSync(LOG_DIR, { recursive: true });

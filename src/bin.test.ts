@@ -8,14 +8,14 @@ import { tmpdir } from "os";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, ".."); // src/.. = project root
 
-describe("bin/codewhispr — symlink CWD regression", () => {
+describe("bin/codedove — symlink CWD regression", () => {
   it("starts without 'React is not defined' when invoked via a symlinked directory from a foreign CWD", async () => {
     // Replicate npm-link structure: a symlink-directory → project root.
     const symlinkDir = join(tmpdir(), `cw-bintest-${Date.now()}`);
     await symlink(PROJECT_ROOT, symlinkDir);
 
     let output = "";
-    const scriptPath = join(symlinkDir, "bin", "codewhispr");
+    const scriptPath = join(symlinkDir, "bin", "codedove");
     const child = spawn(scriptPath, [], {
       cwd: tmpdir(),           // NOT the project root
       stdio: ["ignore", "pipe", "pipe"],

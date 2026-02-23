@@ -107,7 +107,7 @@ export function Setup({ envPath, onComplete }: Props) {
     const current = API_STEPS[apiStep];
     return (
       <Box flexDirection="column" gap={1} padding={2}>
-        <Text bold>codewhispr setup — API keys ({apiStep + 1}/{API_STEPS.length})</Text>
+        <Text bold>codedove setup — API keys ({apiStep + 1}/{API_STEPS.length})</Text>
         <Text dimColor>Credentials are saved to .env in the install directory.</Text>
         <Box flexDirection="column" marginTop={1} gap={1}>
           {API_STEPS.slice(0, apiStep).map((s) => (
@@ -130,8 +130,8 @@ export function Setup({ envPath, onComplete }: Props) {
   const current = CONFIG_STEPS[configStep];
   return (
     <Box flexDirection="column" gap={1} padding={2}>
-      <Text bold>codewhispr setup — preferences ({configStep + 1}/{CONFIG_STEPS.length})</Text>
-      <Text dimColor>Saved to ~/.codewhispr/config.json</Text>
+      <Text bold>codedove setup — preferences ({configStep + 1}/{CONFIG_STEPS.length})</Text>
+      <Text dimColor>Saved to ~/.codedove/config.json</Text>
       <Box flexDirection="column" marginTop={1} gap={1}>
         {CONFIG_STEPS.slice(0, configStep).map((s) => (
           <Text key={s.key} color="green">✓ {s.label}</Text>

@@ -4,7 +4,7 @@ import { watch } from "fs";
 import { readFile } from "fs/promises";
 import { homedir } from "os";
 
-const LOG_PATH = `${homedir()}/.codewhispr/bot.log`;
+const LOG_PATH = `${homedir()}/.codedove/bot.log`;
 
 type LogLine = { raw: string; direction?: "in" | "out" };
 
