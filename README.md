@@ -37,14 +37,14 @@ codedove is a Telegram bot that acts as a remote interface for [Claude Code](htt
 ## Prerequisites
 
 - macOS or Linux (uses launchd on macOS, systemd on Linux)
-- Node.js 18+
+- Node.js 20+
 - [tmux](https://github.com/tmux/tmux) — `brew install tmux`
 - Claude Code — `npm install -g @anthropic-ai/claude-code`
 
 ## Install
 
 ```bash
-git clone https://github.com/your-username/codedove.git
+git clone https://github.com/lucapegolotti/codedove.git
 cd codedove
 npm install
 npm install -g .
@@ -63,7 +63,7 @@ On first run, a setup wizard walks you through:
 
 1. **API keys** — Telegram bot token (from [@BotFather](https://t.me/BotFather)), Anthropic API key, OpenAI API key
 2. **Repositories folder** — where Claude looks for your projects (default: `~/repositories`)
-3. **Chat ID allowlist** — your Telegram chat ID so only you can use the bot (get it from [@userinfobot](https://t.me/userinfobot))
+3. **Chat ID** — your Telegram chat ID (required) so only you can use the bot (get it from [@userinfobot](https://t.me/userinfobot))
 4. **Claude Code hooks** — installs Stop, Permission, and Compact hooks so the bot gets notified when Claude finishes a turn and receives permission requests
 5. **Launch agent** — registers the bot as a macOS launch agent so it starts automatically on login
 
@@ -181,7 +181,11 @@ A shell hook (`~/.claude/hooks/codedove-stop.sh`) is registered as a Claude Code
 
 ### Permission hook
 
-When Claude Code needs permission to use a tool, a `Notification` hook (`codedove-permission.sh`) writes a request to `~/.codedove/permission-request-<id>.json` and waits for a response file. The bot detects the request via a file watcher, sends a Telegram message with Approve/Deny buttons, and writes the response when the user taps a button. The hook reads the response and exits with 0 (approve) or 2 (deny).
+When Claude Code needs permission to use a tool, it fires a `Notification` event (matcher: `permission_prompt`). The hook script (`codedove-permission.sh`) writes a request to `~/.codedove/permission-request-<id>.json` and waits for a response file. The bot detects the request via a file watcher, sends a Telegram message with Approve/Deny buttons, and writes the response when the user taps a button. The hook reads the response and exits with 0 (approve) or 2 (deny).
+
+### Compact hooks
+
+Two hooks handle context compaction. A `PreCompact` hook (`codedove-compact-start.sh`) sends a Telegram notification when compaction begins. A `SessionStart` hook (`codedove-compact-end.sh`) fires when the session resumes after compaction and notifies Telegram that compaction is complete.
 
 ### Voice pipeline
 

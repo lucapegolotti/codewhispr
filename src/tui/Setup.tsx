@@ -27,8 +27,8 @@ const CONFIG_STEPS = [
   },
   {
     key: "allowedChatId" as const,
-    label: "Your Telegram chat ID (optional)",
-    hint: "Message @userinfobot to find your ID. Leave blank to allow all.",
+    label: "Your Telegram chat ID",
+    hint: "Message @userinfobot to find your ID.",
     defaultValue: "",
   },
 ];
@@ -73,17 +73,26 @@ export function Setup({ envPath, onComplete }: Props) {
   async function handleConfigSubmit(value: string) {
     const current = CONFIG_STEPS[configStep];
     const trimmed = value.trim() || current.defaultValue;
+
+    // Chat ID is required and must be a valid number
+    if (current.key === "allowedChatId") {
+      const parsed = parseInt(trimmed, 10);
+      if (!trimmed || !Number.isFinite(parsed)) {
+        setError(null);
+        return; // silently reject empty/invalid input
+      }
+    }
+
     const next = { ...configValues, [current.key]: trimmed };
     setConfigValues(next);
     setInput("");
 
     if (configStep === CONFIG_STEPS.length - 1) {
       try {
-        const chatIdStr = next.allowedChatId ?? "";
-        const chatId = chatIdStr ? parseInt(chatIdStr, 10) : undefined;
+        const chatId = parseInt(next.allowedChatId ?? "", 10);
         await saveConfig({
           reposFolder: next.reposFolder || CONFIG_STEPS[0].defaultValue,
-          ...(chatId && Number.isFinite(chatId) ? { allowedChatId: chatId } : {}),
+          allowedChatId: chatId,
         });
         setPhase("hooks");
       } catch (err) {

@@ -23,6 +23,9 @@
     "openai": "latest",
     "react": "latest"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "@types/node": "latest",
     "@types/react": "latest",
