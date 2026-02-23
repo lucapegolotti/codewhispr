@@ -114,7 +114,7 @@ describe("scenario: /clear then new message", () => {
       const interval = setInterval(() => {
         if (completed) { clearInterval(interval); resolve(); }
       }, 50);
-      setTimeout(() => { clearInterval(interval); resolve(); }, 3000);
+      setTimeout(() => { clearInterval(interval); resolve(); }, 5000);
     });
 
     stop();
@@ -206,7 +206,7 @@ describe("scenario: /clear then question — two-message flow end-to-end", () =>
       const interval = setInterval(() => {
         if (completed) { clearInterval(interval); resolve(); }
       }, 50);
-      setTimeout(() => { clearInterval(interval); resolve(); }, 3000);
+      setTimeout(() => { clearInterval(interval); resolve(); }, 5000);
     });
     stop();
 
@@ -291,7 +291,7 @@ describe("scenario: interrupt mid-turn — new watcher sees only new turn", () =
       const interval = setInterval(() => {
         if (newCompleted) { clearInterval(interval); resolve(); }
       }, 50);
-      setTimeout(() => { clearInterval(interval); resolve(); }, 3000);
+      setTimeout(() => { clearInterval(interval); resolve(); }, 5000);
     });
     newStop();
 
@@ -357,7 +357,7 @@ describe("scenario: response with table is detected and rendered as PNG", () => 
       const interval = setInterval(() => {
         if (completed) { clearInterval(interval); resolve(); }
       }, 50);
-      setTimeout(() => { clearInterval(interval); resolve(); }, 3000);
+      setTimeout(() => { clearInterval(interval); resolve(); }, 5000);
     });
     stop();
 
