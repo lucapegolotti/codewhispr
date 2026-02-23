@@ -12,6 +12,7 @@ import { InputFile } from "grammy";
 import { writeFile, mkdir, readFile } from "fs/promises";
 import { homedir } from "os";
 import { WatcherManager } from "../../session/watcher-manager.js";
+import { getTimerSetup, setTimerSetup, startTimer } from "./timer.js";
 
 // Singleton watcher manager — shared with commands.ts via re-exports
 export const watcherManager = new WatcherManager(pendingImages);
@@ -123,6 +124,33 @@ export async function processTextTurn(ctx: Context, chatId: number, text: string
     }
     // Not a number — fall through to normal message handling
     clearPendingImageCount();
+  }
+
+  // Handle timer setup flow
+  const timerSetup = getTimerSetup();
+  if (timerSetup) {
+    if (timerSetup.phase === "awaiting_frequency") {
+      const freq = parseFloat(text.trim());
+      if (isNaN(freq) || freq <= 0) {
+        await ctx.reply("Please enter a positive number (minutes).");
+        return;
+      }
+      setTimerSetup({ phase: "awaiting_prompt", frequencyMin: freq });
+      await ctx.reply("What prompt should be sent each time?");
+      return;
+    }
+    if (timerSetup.phase === "awaiting_prompt") {
+      const prompt = text.trim();
+      if (!prompt) {
+        await ctx.reply("Please enter a non-empty prompt.");
+        return;
+      }
+      const { frequencyMin } = timerSetup;
+      setTimerSetup(null);
+      startTimer(frequencyMin, prompt);
+      await ctx.reply(`Timer started. Every ${frequencyMin}min: "${prompt}"\nRun /timer to stop.`);
+      return;
+    }
   }
 
   const attached = await ensureSession(ctx, chatId);

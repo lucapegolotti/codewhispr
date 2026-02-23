@@ -6,6 +6,7 @@ import { handleLaunchCallback } from "./launch.js";
 import { handleImagesCallback } from "./images.js";
 import { handleModelCallback } from "./model.js";
 import { handleDetachCallback } from "./detach.js";
+import { handleTimerCallback } from "./timer.js";
 
 // Re-export image state used by text.ts
 export { pendingImages, pendingImageCount, clearPendingImageCount } from "./images.js";
@@ -46,6 +47,11 @@ export function registerCallbacks(bot: Bot): void {
 
     if (data.startsWith("detach:")) {
       await handleDetachCallback(ctx, data);
+      return;
+    }
+
+    if (data.startsWith("timer:")) {
+      await handleTimerCallback(ctx, data);
       return;
     }
   });

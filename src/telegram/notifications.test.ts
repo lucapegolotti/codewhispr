@@ -322,7 +322,7 @@ describe("notifyWaiting prompt rendering", () => {
 
     const promptCall = mockBot.api.sendMessage.mock.calls[0];
     const text: string = promptCall[1];
-    expect(text).toBe("**Bold** and `code`");
+    expect(text).toBe("*Bold* and `code`");
     expect(text).not.toContain('_"');
     expect(text).not.toContain('"_');
   });

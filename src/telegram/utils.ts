@@ -84,6 +84,11 @@ export function splitMessage(text: string, limit = 4000): string[] {
 // Send helpers
 // ---------------------------------------------------------------------------
 
+// Convert GitHub-flavored markdown bold (**text**) to Telegram Markdown bold (*text*).
+function normalizeMarkdown(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*/g, "*$1*");
+}
+
 async function sendTextChunk(
   send: (text: string, markdown: boolean) => Promise<void>,
   text: string
@@ -91,7 +96,7 @@ async function sendTextChunk(
   if (!text.trim()) return;
   for (const chunk of splitMessage(text)) {
     try {
-      await send(chunk, true);
+      await send(normalizeMarkdown(chunk), true);
     } catch {
       await send(chunk, false);
     }

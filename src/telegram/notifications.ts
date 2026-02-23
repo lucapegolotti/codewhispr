@@ -45,7 +45,7 @@ export class NotificationService {
 
   async sendPing(text: string): Promise<void> {
     if (!this.bot || !this.chatId) return;
-    await this.bot.api.sendMessage(this.chatId, text).catch(() => {});
+    await sendMarkdownMessage(this.bot, this.chatId, text);
   }
 
   async notifyWaiting(state: SessionWaitingState): Promise<void> {

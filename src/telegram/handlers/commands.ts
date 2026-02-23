@@ -6,6 +6,7 @@ import { summarizeSession } from "../../agent/summarizer.js";
 import { sendMarkdownReply } from "../utils.js";
 import { sendSessionPicker } from "./sessions.js";
 import { clearActiveWatcher, watcherManager, fetchAndOfferImages } from "./text.js";
+import { isTimerActive, stopTimer, setTimerSetup } from "./timer.js";
 import { unlink, writeFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
@@ -111,6 +112,11 @@ export const BOT_COMMANDS: Array<{ command: string; description: string; details
     command: "model",
     description: "Switch Claude Code model",
     details: "Shows a list of available Claude models. Tap one to send /model <name> to Claude Code.",
+  },
+  {
+    command: "timer",
+    description: "Set a recurring prompt on a schedule",
+    details: "Sets up a recurring prompt that gets injected into Claude Code every N minutes. Run /timer again to stop an active timer.",
   },
   {
     command: "restart",
@@ -270,6 +276,22 @@ export function registerCommands(bot: Bot): void {
       keyboard.text("Haiku 4.5", "model:claude-haiku-4-5-20251001");
     }
     await ctx.reply("Choose a model:", { reply_markup: keyboard });
+  });
+
+  bot.command("timer", async (ctx) => {
+    if (isTimerActive()) {
+      const stopped = stopTimer();
+      if (stopped) {
+        await ctx.reply(`Timer stopped. Was running every ${stopped.frequencyMin}min.`);
+      } else {
+        await ctx.reply("No active timer.");
+      }
+      return;
+    }
+    const keyboard = new InlineKeyboard()
+      .text("Yes, set a timer", "timer:confirm")
+      .text("Cancel", "timer:cancel");
+    await ctx.reply("Set up a recurring prompt for Claude Code?", { reply_markup: keyboard });
   });
 
   bot.command("restart", async (ctx) => {
