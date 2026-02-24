@@ -1,5 +1,5 @@
 import chokidar from "chokidar";
-import { readFile, stat } from "fs/promises";
+import { readFile, realpath, stat } from "fs/promises";
 import { PROJECTS_PATH } from "./history.js";
 import { log } from "../logger.js";
 import { parseAssistantText, extractCwd, findResultEvent, findExitPlanMode, extractWrittenImagePaths } from "./jsonl.js";
@@ -64,6 +64,19 @@ export async function getLastAssistantEntry(filePath: string): Promise<{
     const lines = content.trim().split("\n").filter(Boolean);
     const { text } = parseAssistantText(lines);
     const { found: hasExitPlanMode, planText } = findExitPlanMode(lines);
+
+    // If the very last entry is a result event, the turn is complete —
+    // any waiting state found is stale and should not trigger a notification.
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const entry = JSON.parse(lines[i]);
+        if (entry.type === "result") {
+          return { text: null, hasExitPlanMode: false, planText: null };
+        }
+        if (entry.type === "assistant" || entry.type === "user") break;
+      } catch { continue; }
+    }
+
     return { text, hasExitPlanMode, planText };
   } catch {
     // file unreadable
@@ -117,6 +130,10 @@ export function startMonitor(onWaiting: WaitingCallback, watchPath: string = PRO
     const timer = setTimeout(async () => {
       timers.delete(filePath);
 
+      // Resolve symlinks so the same JSONL file isn't processed twice
+      // (e.g. codedove → codewhispr symlink).
+      const resolvedPath = await realpath(filePath).catch(() => filePath);
+
       const { text: lastText, hasExitPlanMode, planText } = await getLastAssistantEntry(filePath);
 
       // Dedup: for ExitPlanMode use planText as the stable key (lastText can
@@ -126,7 +143,7 @@ export function startMonitor(onWaiting: WaitingCallback, watchPath: string = PRO
       const dedupKey = hasExitPlanMode
         ? `exit|${planText ?? ""}`
         : `${lastText ?? ""}`;
-      if (lastNotified.get(filePath) === dedupKey) return;
+      if (lastNotified.get(resolvedPath) === dedupKey) return;
       // Only update dedup after we know there's something actionable
       // (checked below) — prevents suppressing future events on no-op visits.
 
@@ -145,8 +162,8 @@ export function startMonitor(onWaiting: WaitingCallback, watchPath: string = PRO
       const waitingType = lastText ? classifyWaitingType(lastText) : null;
 
       if (waitingType) {
-        lastNotified.set(filePath, dedupKey);
-        lastNotifiedTime.set(filePath, Date.now());
+        lastNotified.set(resolvedPath, dedupKey);
+        lastNotifiedTime.set(resolvedPath, Date.now());
         log({ message: `session ${sessionId.slice(0, 8)} waiting (${waitingType}): ${lastText!.slice(0, 80)}` });
         await onWaiting({ sessionId, projectName, cwd, filePath, waitingType, prompt: lastText! }).catch(
           (err) => log({ message: `notification error: ${err instanceof Error ? err.message : String(err)}` })
@@ -154,8 +171,8 @@ export function startMonitor(onWaiting: WaitingCallback, watchPath: string = PRO
       } else if (hasExitPlanMode) {
         // ExitPlanMode is detected in the JSONL — the plan approval choices are
         // always the same fixed set, so we fire immediately without pane capture.
-        lastNotified.set(filePath, dedupKey);
-        lastNotifiedTime.set(filePath, Date.now());
+        lastNotified.set(resolvedPath, dedupKey);
+        lastNotifiedTime.set(resolvedPath, Date.now());
         const choices = [
           "Yes, clear context and bypass permissions",
           "Yes, bypass permissions",

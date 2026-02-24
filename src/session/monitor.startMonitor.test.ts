@@ -33,6 +33,7 @@ vi.mock("fs/promises", () => ({
   mkdir: vi.fn(),
   unlink: vi.fn(),
   appendFile: vi.fn(),
+  realpath: vi.fn().mockImplementation(async (p: string) => p),
 }));
 
 import { startMonitor, WaitingType } from "./monitor.js";
