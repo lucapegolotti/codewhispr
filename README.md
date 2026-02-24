@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="codedove-logo.png" alt="codedove" width="500">
+  <img src="assets/codedove-logo.png" alt="codedove" width="500">
 </p>
 
 <p align="center">
@@ -12,10 +12,10 @@
 
 > Control Claude Code from your phone via Telegram — text, voice, or image.
 
-Send a message from Telegram. Claude Code runs on your Mac. You get the response back in Telegram — as text or as a voice note.
+Send a message from Telegram. Claude Code runs on your Mac/Linux computer. You get the response back in Telegram, as text or as a voice note.
 
 <p align="center">
-  <img src="codedove.gif" alt="codedove demo" width="600">
+  <img src="assets/codedove.gif" alt="codedove demo" width="600">
 </p>
 
 ## What it is
@@ -44,7 +44,7 @@ codedove is a Telegram bot that acts as a remote interface for [Claude Code](htt
 
 - macOS or Linux (uses launchd on macOS, systemd on Linux)
 - Node.js 20+
-- [tmux](https://github.com/tmux/tmux) — `brew install tmux`
+- [tmux](https://github.com/tmux/tmux)
 - Claude Code — `npm install -g @anthropic-ai/claude-code`
 
 ## Install
@@ -173,7 +173,7 @@ When a session is attached, the bot stores `<sessionId>\n<cwd>` in `~/.codedove/
 
 Messages are injected into the Claude Code tmux pane using `tmux send-keys`. The bot identifies the correct pane by matching the current working directory and checking that the process title matches Claude Code's title string (a semver like `2.1.47`).
 
-Text and Enter are sent in two separate `send-keys` calls with a 100ms delay — sending them together causes Enter to fire before Claude Code finishes processing the text.
+Text and Enter are sent in two separate `send-keys` calls with a 100ms delay. Sending them together causes Enter to fire before Claude Code finishes processing the text.
 
 ### Response detection
 
@@ -202,7 +202,7 @@ Voice notes (OGG) are transcribed with OpenAI Whisper, optionally cleaned up by 
 - **Chat ID allowlist** — configure your Telegram chat ID in the setup wizard. The bot silently ignores messages from all other IDs. Store it in `~/.codedove/config.json` as `allowedChatId`.
 - **Bot token** — keep your bot token private. Anyone who can message your bot can run commands on your machine.
 - **Tool permissions** — by default Claude Code runs with `acceptEdits` permission mode. The permission hook lets you approve or deny individual tool uses from Telegram.
-- **Local only** — the bot runs on your Mac. No data goes anywhere except to the Telegram Bot API, Anthropic API, and OpenAI API.
+- **Local only** — the bot runs on your host. No data goes anywhere except to the Telegram Bot API, Anthropic API, and OpenAI API.
 
 ## Stack
 
@@ -219,3 +219,10 @@ Voice notes (OGG) are transcribed with OpenAI Whisper, optionally cleaned up by 
 
 ---
 
+## Known limitations
+- Claude Code sessions need to be open in tmux sessions. For this reason, prompt injection
+  is quite fragile and sometimes breaks. However, this solution allows monitoring the 
+  Claude Code session equally from Telegram and the Claude Code TUI, namely switching
+  from one to the other is seamless.
+- It is currently not possible to synchronize sessions running on separate hosts. The
+  easiest workaround is to create different bots, one per host.
