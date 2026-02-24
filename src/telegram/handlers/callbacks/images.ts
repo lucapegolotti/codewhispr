@@ -42,7 +42,8 @@ export async function handleImagesCallback(ctx: Context, data: string, bot: Bot)
   }
 
   if (action === "send") {
-    const key = parts.slice(2).join(":");
+    // Callback data is "images:send:all:{key}" — skip the "all" part
+    const key = parts.slice(3).join(":");
     const images = pendingImages.get(key);
     if (!images) {
       await ctx.answerCallbackQuery({ text: "Images no longer available." });
