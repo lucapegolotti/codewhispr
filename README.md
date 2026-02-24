@@ -1,4 +1,6 @@
-# codedove
+<p align="center">
+  <img src="codedove-logo.png" alt="codedove" width="500">
+</p>
 
 <p align="center">
   <a href="https://github.com/lucapegolotti/codedove/actions/workflows/ci.yml"><img src="https://github.com/lucapegolotti/codedove/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
@@ -12,6 +14,10 @@
 
 Send a message from Telegram. Claude Code runs on your Mac. You get the response back in Telegram — as text or as a voice note.
 
+<p align="center">
+  <video src="codedove.mp4" width="600" controls></video>
+</p>
+
 ## What it is
 
 codedove is a Telegram bot that acts as a remote interface for [Claude Code](https://claude.ai/code) sessions running in tmux on your machine. You can type or speak commands, receive responses as text or audio, approve tool permissions from your phone, and manage multiple Claude Code sessions from a single Telegram chat.
@@ -20,7 +26,7 @@ codedove is a Telegram bot that acts as a remote interface for [Claude Code](htt
 
 - **Text, voice, and image input** — type a message, send a voice note, or share a photo. Everything gets injected into Claude Code.
 - **Response forwarding** — Claude's responses are forwarded to Telegram as formatted Markdown messages with the repo name and model shown.
-- **Voice notes** — voice messages are transcribed (Whisper), optionally polished (Haiku), and Claude's reply is narrated back as a voice note (OpenAI TTS).
+- **Voice notes** — voice messages are transcribed (Whisper), optionally polished (Haiku), and Claude's reply is narrated back as a voice note (OpenAI TTS). *(Requires OpenAI key; narration also requires Anthropic key)*
 - **Image support** — photos and image files are saved locally and referenced in Claude Code. Use `/images` to retrieve images Claude created.
 - **Table rendering** — Markdown tables are rendered as PNG images since Telegram doesn't support table formatting.
 - **Permission approval** — when Claude needs to run a tool, you get an inline keyboard with Approve/Deny buttons.
@@ -29,10 +35,10 @@ codedove is a Telegram bot that acts as a remote interface for [Claude Code](htt
 - **Session management** — attach, detach, and switch between multiple Claude Code sessions running in tmux.
 - **Model switching** — use `/model` to change the active Claude model from a picker of available models.
 - **Recurring timer** — `/timer` sets up a prompt that auto-injects every N minutes, with response notifications.
-- **Session summarization** — `/summarize` reads the session JSONL and produces a concise summary.
+- **Session summarization** — `/summarize` reads the session JSONL and produces a concise summary. *(Requires Anthropic key)*
 - **Context management** — `/clear` and `/compact` manage Claude Code's context window.
 - **Auto-restart** — runs as a launchd (macOS) or systemd (Linux) service; `/restart` restarts the bot.
-- **Voice polish toggle** — `/polishvoice` toggles whether voice transcripts are cleaned up before injection.
+- **Voice polish toggle** — `/polishvoice` toggles whether voice transcripts are cleaned up before injection. *(Requires Anthropic key)*
 
 ## Prerequisites
 
@@ -61,8 +67,8 @@ codedove
 
 On first run, a setup wizard walks you through:
 
-1. **API keys** — Telegram bot token (from [@BotFather](https://t.me/BotFather)), Anthropic API key, OpenAI API key
-2. **Repositories folder** — where Claude looks for your projects (default: `~/repositories`)
+1. **Telegram bot token** (required) — from [@BotFather](https://t.me/BotFather)
+2. **Optional API keys** — Anthropic API key (enables /summarize, voice polish, narration) and OpenAI API key (enables voice messages). Press Enter to skip either.
 3. **Chat ID** — your Telegram chat ID (required) so only you can use the bot (get it from [@userinfobot](https://t.me/userinfobot))
 4. **Claude Code hooks** — installs Stop, Permission, and Compact hooks so the bot gets notified when Claude finishes a turn and receives permission requests
 5. **Launch agent** — registers the bot as a macOS launch agent so it starts automatically on login
