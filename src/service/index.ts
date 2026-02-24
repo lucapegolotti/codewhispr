@@ -39,7 +39,9 @@ export async function getServiceStatus(): Promise<ServiceStatus> {
 
 export async function startService(): Promise<void> {
   if (isMac) {
-    await execAsync("launchctl", ["load", PLIST_PATH]);
+    const uid = process.getuid ? process.getuid() : 501;
+    // bootstrap re-registers the service (needed after bootout)
+    await execAsync("launchctl", ["bootstrap", `gui/${uid}`, PLIST_PATH]);
   } else {
     await execAsync("systemctl", ["--user", "start", SERVICE_UNIT]);
   }
@@ -47,7 +49,9 @@ export async function startService(): Promise<void> {
 
 export async function stopService(): Promise<void> {
   if (isMac) {
-    await execAsync("launchctl", ["unload", PLIST_PATH]);
+    const uid = process.getuid ? process.getuid() : 501;
+    // bootout fully unregisters the service so KeepAlive doesn't respawn it
+    await execAsync("launchctl", ["bootout", `gui/${uid}/${SERVICE_LABEL}`]);
   } else {
     await execAsync("systemctl", ["--user", "stop", SERVICE_UNIT]);
   }
@@ -63,6 +67,8 @@ export async function restartService(): Promise<void> {
 }
 
 function buildPlist(executablePath: string): string {
+  // Capture the current PATH so launchd can find node/tsx
+  const currentPath = process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -73,6 +79,11 @@ function buildPlist(executablePath: string): string {
   <array>
     <string>${executablePath}</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>${currentPath}</string>
+  </dict>
   <key>KeepAlive</key>
   <true/>
   <key>RunAtLoad</key>
@@ -103,9 +114,10 @@ WantedBy=default.target
 
 export async function installService(executablePath: string): Promise<void> {
   if (isMac) {
+    const uid = process.getuid ? process.getuid() : 501;
     await mkdir(dirname(PLIST_PATH), { recursive: true });
     await writeFile(PLIST_PATH, buildPlist(executablePath), "utf8");
-    await execAsync("launchctl", ["load", "-w", PLIST_PATH]).catch(() => {});
+    await execAsync("launchctl", ["bootstrap", `gui/${uid}`, PLIST_PATH]).catch(() => {});
   } else {
     await mkdir(dirname(SYSTEMD_PATH), { recursive: true });
     await writeFile(SYSTEMD_PATH, buildSystemdUnit(executablePath), "utf8");
