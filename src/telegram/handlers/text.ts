@@ -35,7 +35,7 @@ export async function fetchAndOfferImages(
   attached: { sessionId: string; cwd: string }
 ): Promise<void> {
   const prompt =
-    "List only the absolute file paths of image files you created in this session, one per line. Reply with ONLY the paths, nothing else.";
+    "List only the absolute file paths of image files you created or wrote during your last request (not the entire session), one per line. Reply with ONLY the paths, nothing else.";
 
   // If Claude is currently processing, interrupt it first (same as processTextTurn)
   if (watcherManager.isActive) {
@@ -83,7 +83,7 @@ export async function fetchAndOfferImages(
               : ext === "webp"
                 ? "image/webp"
                 : "image/png";
-        images.push({ mediaType, data: buf.toString("base64") });
+        images.push({ mediaType, data: buf.toString("base64"), path: p });
       } catch {
         /* file not found — skip */
       }
@@ -94,7 +94,7 @@ export async function fetchAndOfferImages(
       pendingImages.set(key, images);
       await notifyImages(images, key);
     } else {
-      await sendPing("No image files found.");
+      await sendPing("No new image files found.");
     }
   };
 
